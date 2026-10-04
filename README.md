@@ -18,6 +18,11 @@ npm run hunt      # start hunting (Ctrl+C to stop); found keys go to gems.jsonl 
 npm run top       # best addresses found so far, without keys
 ```
 
+**Why not just a mask?** Fixed-mask generators are practically limited to 6–8 characters: every extra letter costs ~32x more
+attempts. This one accepts thousands of words and word pairs at once, so it keeps finding 2–3-word phrases of 9–12 characters
+(`…Y3ah2goaT` = "yeah 2 goat") that would take ~10^14 attempts to hit on purpose. The trade-off: you can't order a specific
+phrase — you pick from what turns up.
+
 Using an AI coding agent? Point it at [AGENTS.md](AGENTS.md). Docs and code comments are in Russian.
 
 ---
@@ -26,6 +31,24 @@ Using an AI coding agent? Point it at [AGENTS.md](AGENTS.md). Docs and code comm
 **не поверит, что они случайные**: слова и фразы на конце (`…NGMI-ser`, `…good_JOB`), мемное слово сразу после
 `UQ`, растяжки (`Swwwwwwag`), смайлы на контрасте регистра (`-_-`, `o_O`), мем-числа (`420`, `69`, `67`),
 «адрес из документации» (`UQABCDEF…`, `UQAAAAAA…`).
+
+## Главное отличие от генераторов «по маске»
+
+Генератор по маске ищет одно заданное окончание. Каждая лишняя буква — примерно в 32 раза больше попыток,
+поэтому на практике маска ограничена 6–8 символами (`…_durov`, `…moon`).
+
+Здесь засчитываются **тысячи слов и их сочетаний одновременно**. Поэтому постоянно находятся фразы из 2–3 слов длиной
+9–12 символов, которые по маске искать бесполезно:
+
+| Окончание | Читается как | Найти именно его по маске |
+|---|---|---|
+| `…Y3ah2goaT` | yeah 2 goat | ~140 трлн попыток |
+| `…x4xa_0kUSh` | xaxa kush | ~9 000 трлн попыток |
+
+Это адреса из обычного тестового прогона. Цена подхода: **конкретную фразу заказать нельзя**, вы выбираете из того,
+что выпало (бот присылает лучшее). Если нужно именно своё короткое окончание, есть режим `--suffix` (см. ниже).
+
+## Как это работает
 
 Видеокарта перебирает ключи и грубым ситом отбирает примерно 1 адрес из 10 000. Node-обёртка точно оценивает каждого
 кандидата, сохраняет хорошие (с ключом, только у вас на диске) и раз в несколько минут присылает в Telegram лучший
