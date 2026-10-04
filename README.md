@@ -20,8 +20,13 @@ npm run top       # best addresses found so far, without keys
 
 **Why not just a mask?** Fixed-mask generators are practically limited to 6–8 characters: every extra letter costs ~32x more
 attempts. This one accepts thousands of words and word pairs at once, so it keeps finding 2–3-word phrases of 9–12 characters
-(`…Y3ah2goaT` = "yeah 2 goat") that would take ~10^14 attempts to hit on purpose. The trade-off: you can't order a specific
-phrase — you pick from what turns up.
+(`…Y3ah2goaT` = "yeah 2 goat") that would take ~10^14 attempts to hit on purpose — the examples in this README came from
+a single 44-second test run. The trade-off: you can't order a specific phrase — you pick from what turns up.
+
+**Raw keys, not 24 words.** A TON key from a 24-word phrase costs 100,000 PBKDF2-HMAC-SHA512 iterations (and only ~1 in 256
+random phrases is valid), so phrase-based generators are roughly 1000x slower. Here raw ed25519 seeds are searched directly:
+millions of addresses per second on modern NVIDIA GPUs. Found keys import into MyTonWallet (tested); wallets that accept only
+24 words (e.g. Tonkeeper) can't import them.
 
 Using an AI coding agent? Point it at [AGENTS.md](AGENTS.md). Docs and code comments are in Russian.
 
@@ -32,7 +37,9 @@ Using an AI coding agent? Point it at [AGENTS.md](AGENTS.md). Docs and code comm
 `UQ`, растяжки (`Swwwwwwag`), смайлы на контрасте регистра (`-_-`, `o_O`), мем-числа (`420`, `69`, `67`),
 «адрес из документации» (`UQABCDEF…`, `UQAAAAAA…`).
 
-## Главное отличие от генераторов «по маске»
+## Чем отличается
+
+### 1. Фразы, а не маска
 
 Генератор по маске ищет одно заданное окончание. Каждая лишняя буква — примерно в 32 раза больше попыток,
 поэтому на практике маска ограничена 6–8 символами (`…_durov`, `…moon`).
@@ -40,13 +47,32 @@ Using an AI coding agent? Point it at [AGENTS.md](AGENTS.md). Docs and code comm
 Здесь засчитываются **тысячи слов и их сочетаний одновременно**. Поэтому постоянно находятся фразы из 2–3 слов длиной
 9–12 символов, которые по маске искать бесполезно:
 
-| Окончание | Читается как | Найти именно его по маске |
-|---|---|---|
-| `…Y3ah2goaT` | yeah 2 goat | ~140 трлн попыток |
-| `…x4xa_0kUSh` | xaxa kush | ~9 000 трлн попыток |
+| Окончание | Читается как | Найти именно его по маске | Время поиска по маске¹ |
+|---|---|---|---|
+| `…Y3ah2goaT` | yeah 2 goat | ~140 трлн попыток | от 2 месяцев до года с лишним |
+| `…x4xa_0kUSh` | xaxa kush | ~9 000 трлн попыток | от 10 до 70 лет |
 
-Это адреса из обычного тестового прогона. Цена подхода: **конкретную фразу заказать нельзя**, вы выбираете из того,
-что выпало (бот присылает лучшее). Если нужно именно своё короткое окончание, есть режим `--suffix` (см. ниже).
+**Оба адреса (и все примеры ниже) найдены за один тестовый прогон длиной 44 секунды** на одной домашней видеокарте —
+вместе с ещё полусотней находок.
+
+¹ При 4–30 млн адресов/с — грубая оценка для современных видеокарт NVIDIA, от среднего класса до топовых
+(точную скорость вашей покажет `npm run bench`).
+
+Цена подхода: **конкретную фразу заказать нельзя**, вы выбираете из того, что выпало (бот присылает лучшее).
+Если нужно именно своё короткое окончание, есть режим `--suffix` (см. ниже).
+
+### 2. Перебираются ключи, а не фразы из 24 слов
+
+Ключ от фразы из 24 слов TON получает через PBKDF2-HMAC-SHA512 со **100 000 итераций**, а из случайных фраз подходит только
+~1 из 256 (ещё по 390 итераций на проверку). Итого ~400 000 вычислений SHA-512 на **каждый** ключ — генераторы, которые
+перебирают фразы, примерно в тысячу раз медленнее.
+
+Здесь перебираются сами приватные ключи (32-байтные сиды ed25519): один SHA-256, один SHA-512 и одно умножение
+на эллиптической кривой на ключ. Поэтому и скорость — миллионы адресов в секунду.
+
+Обратная сторона: **24 слов у найденного кошелька нет**, есть приватный ключ. Его импорт проверен и работает
+в **MyTonWallet** (октябрь 2026, см. «Как завести найденный кошелёк»). Кошельки, которые принимают только 24 слова
+(например, Tonkeeper), такой ключ не импортируют.
 
 ## Как это работает
 
@@ -126,7 +152,8 @@ src/run_cuda.mjs (обёртка + дашборд)
 | 8 букв | `…lambolol` | 1.1 трлн |
 | 9 букв | `…moontoday` | 35 трлн |
 
-Время = попытки ÷ скорость вашей карты (`npm run bench`, адресов в секунду).
+Время = попытки ÷ скорость вашей карты (`npm run bench`, адресов в секунду). Грубо: современные видеокарты NVIDIA дают
+от ~4 млн (средний класс) до ~30 млн (топовые) адресов в секунду.
 
 Режим «смешных адресов» ловит одновременно тысячи слов и пар слов, поэтому хорошие находки идут постоянно.
 А вот лучший адрес растёт медленно: в 30 раз больше перебора — это примерно одна лишняя «удачная буква».
@@ -189,7 +216,7 @@ node src/check_hits.mjs hits.txt                       (сверка с @ton/ton
 
 ## Как завести найденный кошелёк
 
-Ключ — сырой сид, 24 слов для него нет. Проверено с **MyTonWallet**:
+Ключ — сырой сид, 24 слов для него нет. Проверено с **MyTonWallet** (октябрь 2026 — импорт работает без проблем):
 
 1. Добавить кошелёк → **Import from Secret Words**.
 2. В поле **первого слова** вставьте `seedHex` (64 hex-символа) нужной записи. Без пробелов и переноса
