@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run smoke
+
+  no-secrets:
+    name: No key files in the repo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if files with private keys or bot tokens are tracked
+        run: |
+          if git ls-files | grep -E '(^|/)(gems|favorites|found\.secret)\.jsonl$|(^|/)telegram\.config\.json$|(^|/)hits[^/]*\.txt$'; then
+            echo "::error::Files above may contain private keys or a bot token. Remove them from git."
+            exit 1
+          fi

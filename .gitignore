@@ -1,0 +1,22 @@
+# ПРИВАТНЫЕ КЛЮЧИ — никогда не коммитить
+gems.jsonl
+favorites.jsonl
+found.secret.jsonl
+hits*.txt
+*.secret.*
+# токен бота
+telegram.config.json
+# журналы и данные бота
+data/taste/
+*.log
+*.pid
+cuda/*.out
+cuda/*.err
+# сборка
+cuda/vanity.exe
+cuda/vanity
+cuda/*.exp
+cuda/*.lib
+node_modules/
+ref/vectors.json
+cuda/testseeds.txt
