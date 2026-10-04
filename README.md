@@ -1,5 +1,7 @@
 # TON Vanity — «смешные» адреса TON-кошелька на видеокарте
 
+<p align="center"><img src="docs/social-preview.png" alt="UQDurov… — пример смешного TON-адреса" width="760"></p>
+
 [![CI](https://github.com/pkmt-commits/ton-meme-vanity/actions/workflows/ci.yml/badge.svg)](https://github.com/pkmt-commits/ton-meme-vanity/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/GPU-NVIDIA%20CUDA-76B900)
