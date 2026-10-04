@@ -16,7 +16,7 @@ jobs:
       matrix:
         node: [20, 22, 24]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
@@ -29,7 +29,7 @@ jobs:
     name: No key files in the repo
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Fail if files with private keys or bot tokens are tracked
         run: |
           if git ls-files | grep -E '(^|/)(gems|favorites|found\.secret)\.jsonl$|(^|/)telegram\.config\.json$|(^|/)hits[^/]*\.txt$'; then
