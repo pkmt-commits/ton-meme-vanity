@@ -7,9 +7,18 @@
 #include <cstdlib>
 #include <chrono>
 #include <string>
+#include <vector>
 #include <random>
 #include <thread>
 #include <nvml.h>
+#ifdef _WIN32
+#include <windows.h>
+#include <bcrypt.h>
+#pragma comment(lib, "bcrypt.lib")
+#else
+#include <unistd.h>
+#include <sys/random.h>
+#endif
 
 typedef unsigned long long u64;
 typedef unsigned char u8;
@@ -18,11 +27,20 @@ typedef unsigned char u8;
 #include "calib.h"
 #include "base_table.h"   // __device__ u64 BASE_TABLE[64][8][3][5]
 #include "words.h"        // DICT[NW][WMAXL], DLEN[NW], NW
+#include "calib_multi.h"  // v12: шаблоны W5 / V4R2 / V3R2 / V3R1 (cuda/gen_calib_multi.mjs, сверено с @ton/ton)
+
+// v12: fixed-base с окном 16 бит: T[i][j] = (j+1)·2^(16i)·B, 16 позиций × 32768 точек, 60 МБ (cuda/tbl16.bin,
+// генерирует cuda/gen_wtable.mjs). 16 сложений точек на ключ вместо 64 — криптография ~2× быстрее.
+// Нет файла — старый путь (BASE_TABLE, окно 4 бита). Ключи и адреса те же самые, меняется только скорость.
+#define WBITS 16
+#define WN 16
+#define WE 32768
+__device__ const unsigned long long* d_tbl;   // nullptr = старый путь
 
 #define M51 2251799813685247ULL  // 2^51 - 1
 #define SUB0 4503599627370458ULL // 2*(2^51-19)
 #define SUBN 4503599627370494ULL // 2*(2^51-1)
-#define HITB 80                  // байт на находку: сид 32 + адрес 48
+#define HITB 81                  // байт на находку: сид 32 + адрес 48 + версия кошелька 1
 #ifndef ITERS
 #define ITERS 8                  // ключей на поток за запуск
 #endif
@@ -139,6 +157,28 @@ __device__ void scalarmult_base(u8 pub[32], const u8 a[32]){
 
 // v10: то же без финального обращения — для пакетного обращения Монтгомери (одно fe_invert на ITERS ключей)
 __device__ void scalarmult_base_xyz(u64 X[5], u64 Y[5], u64 Z[5], const u8 a[32]){
+  if(d_tbl){
+    // v12: знаковые цифры по 16 бит в [-2^15, 2^15], 16 сложений с точками из таблицы (L2/видеопамять)
+    int e[WN];
+    #pragma unroll
+    for(int i=0;i<WN;i++){ int b=2*i; e[i]=a[b] | (a[b+1]<<8); }
+    int carry=0;
+    #pragma unroll
+    for(int i=0;i<WN-1;i++){ int v=e[i]+carry; carry=(v+WE)>>WBITS; e[i]=v-(carry<<WBITS); }
+    e[WN-1]+=carry;
+    u64 T[5]; fe_0(X); fe_1(Y); fe_1(Z); fe_0(T);
+    for(int i=0;i<WN;i++){
+      int d=e[i]; if(d==0) continue;
+      int mag = d<0 ? -d : d;
+      const u64* p = d_tbl + ((size_t)i*WE + (mag-1))*15;
+      u64 q0[5],q1[5],q2[5];
+      #pragma unroll
+      for(int k=0;k<5;k++){ q0[k]=__ldg(p+k); q1[k]=__ldg(p+5+k); q2[k]=__ldg(p+10+k); }
+      if(d>0){ madd_p3(X,Y,Z,T,q0,q1,q2); }
+      else { u64 nq2[5]; u64 zero[5]; fe_0(zero); fe_sub(nq2,zero,q2); madd_p3(X,Y,Z,T,q1,q0,nq2); }
+    }
+    return;
+  }
   signed char e[64];
   #pragma unroll
   for(int i=0;i<32;i++){ e[2*i]=a[i]&15; e[2*i+1]=(a[i]>>4)&15; }
@@ -283,6 +323,35 @@ __device__ void addr_from_pub(const u8 pub[32], u8 addrHash[32], char raw[48]){
   }
 }
 
+// v12: адрес любой версии кошелька v (0 W5, 1 V4R2, 2 V3R2, 3 V3R1) по шаблонам calib_multi.h.
+// Один ключ — 4 разных адреса почти даром (2 SHA-256 вместо умножения на кривой); MyTonWallet показывает все четыре
+// (Настройки → Wallet Versions) и импортирует любую.
+__device__ void addr_from_pub_v(const u8 pub[32], int v, u8 addrHash[32], char raw[48]){
+  u8 dataIn[2+TPL_MAX]; int tl=V_TLEN[v];
+  dataIn[0]=0x00; dataIn[1]=(u8)V_D2[v];
+  for(int i=0;i<tl;i++) dataIn[2+i]=V_TPL[v][i];
+  int bit=V_OFF[v];
+  if((bit&7)==0){ for(int i=0;i<32;i++) dataIn[2+(bit>>3)+i]=pub[i]; }
+  else { int sh=bit&7, b0=2+(bit>>3);   // ключ со сдвигом на sh бит (W5: 1 бит флага перед seqno)
+    u8 keep=dataIn[b0]&(u8)(0xFF<<(8-sh)), tailKeep=dataIn[b0+32]&(u8)(0xFF>>sh);
+    dataIn[b0]=keep|(pub[0]>>sh);
+    for(int i=1;i<32;i++) dataIn[b0+i]=(u8)((pub[i-1]<<(8-sh))|(pub[i]>>sh));
+    dataIn[b0+32]=(u8)(pub[31]<<(8-sh))|tailKeep; }
+  u8 dataHash[32]; sha256_buf(dataHash, dataIn, 2+tl);
+  u8 addrIn[39+32];
+  for(int i=0;i<39;i++) addrIn[i]=V_PREFIX[v][i];
+  for(int i=0;i<32;i++) addrIn[39+i]=dataHash[i];
+  sha256_buf(addrHash, addrIn, 39+32);
+  u8 addr[36]; addr[0]=0x51; addr[1]=0x00;
+  for(int i=0;i<32;i++) addr[2+i]=addrHash[i];
+  unsigned crc=crc16(addr,34); addr[34]=crc>>8; addr[35]=crc&0xff;
+  int si=0;
+  for(int g=0; g<36; g+=3){
+    unsigned n=(addr[g]<<16)|(addr[g+1]<<8)|addr[g+2];
+    raw[si++]=B64[(n>>18)&63]; raw[si++]=B64[(n>>12)&63]; raw[si++]=B64[(n>>6)&63]; raw[si++]=B64[n&63];
+  }
+}
+
 // ---------------- детектор гемов (работает по raw[48]) ----------------
 __device__ int g_run_any(const char*s){int b=1,c=1;for(int i=1;i<48;i++){if(s[i]==s[i-1]){c++;if(c>b)b=c;}else c=1;}return b;}
 __device__ int g_run_end(const char*s){int c=1;for(int i=47;i>0&&s[i]==s[i-1];i--)c++;return c;}
@@ -321,6 +390,22 @@ __device__ void pubs_batch(u8 pubs[ITERS][32], const u8 seeds[ITERS][32]){
 }
 
 #include "detector_words.inc"   // правила поиска слов (v2)
+#include "v5lite.inc"           // v13: сито v5-lite — оценка v5 на видеокарте
+__constant__ int d_v5t;   // порог сита v5-lite в очках v5 (обёртка даёт --save-min − 10); 0 — старые правила слов
+// v13: дешёвые правила узоров (серии, лесенки, палиндромы, бедный набор символов, UQAAAAA) + растяжки старым сканером
+// (только при серии 4+, это редкость) + v5-lite для слов и фраз вместо старых правил слов
+__device__ bool is_gem_v5(const char* raw,int RUN_ANY,int RUN_END,int DIST,int DWIN,int ASCN,int PAL,int ADIST){
+  if(g_run_end(raw)>=RUN_END) return true;
+  int runAny=g_run_any(raw); if(runAny>=RUN_ANY) return true;
+  if(f_distinct(raw,DWIN)<=DIST) return true;
+  if(f_distinct(raw,46)<=ADIST) return true;
+  if(g_asc(raw)>=ASCN) return true;
+  if(g_pal(raw)>=PAL) return true;
+  if(g_startpat(raw)>=5) return true;
+  if(runAny>=4){ char norm[48], lnorm[48]; for(int i=0;i<48;i++){ norm[i]=g_norm(raw[i]); lnorm[i]=g_leet(norm[i]); }
+    WScan s=scan_words<true>(raw,norm,lnorm); if(s.stretchAny || (s.tail&&s.stretchTail)) return true; }
+  return v5lite_bits(raw)*10.f >= (float)d_v5t;
+}
 
 // ---------------- kernels ----------------
 __device__ u8 d_base[32];
@@ -342,7 +427,7 @@ __device__ __forceinline__ bool suf_match(const char*raw){
   return true;
 }
 __global__ void __launch_bounds__(256,2) k_search(u64 baseCtr, u8* hits, unsigned* cnt, int maxHits,   // v10: <=128 регистров -> 2 блока на SM (+20%)
-                         int RUN_ANY,int RUN_END,int DIST,int DWIN,int ASCN,int PAL,int ADIST){
+                         int RUN_ANY,int RUN_END,int DIST,int DWIN,int ASCN,int PAL,int ADIST,int NVER){
   u64 id = (u64)blockIdx.x*blockDim.x + threadIdx.x;
   u64 grid = (u64)gridDim.x*blockDim.x;
   // несколько ключей на поток: запуск длиннее -> меньше доля накладных расходов хоста;
@@ -355,12 +440,14 @@ __global__ void __launch_bounds__(256,2) k_search(u64 baseCtr, u8* hits, unsigne
   pubs_batch(pubs, seeds);
   for(int it=0; it<ITERS; it++){
     const u8* seed=seeds[it];
-    u8 addrHash[32]; char raw[48];
-    addr_from_pub(pubs[it], addrHash, raw);
-    if(d_sufLen ? suf_match(raw) : is_gem_fast(raw,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST)){
-      unsigned idx=atomicAdd(cnt,1u);
-      // находка: сид (32) + готовый адрес (48) — обёртке не нужно пересчитывать адрес
-      if(idx<(unsigned)maxHits){ for(int i=0;i<32;i++) hits[idx*HITB+i]=seed[i]; for(int i=0;i<48;i++) hits[idx*HITB+32+i]=(u8)raw[i]; }
+    for(int v=0; v<NVER; v++){   // v12: адреса нескольких версий кошелька от одного ключа
+      u8 addrHash[32]; char raw[48];
+      addr_from_pub_v(pubs[it], v, addrHash, raw);
+      if(d_sufLen ? suf_match(raw) : (d_v5t ? is_gem_v5(raw,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST) : is_gem_fast(raw,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST))){
+        unsigned idx=atomicAdd(cnt,1u);
+        // находка: сид (32) + готовый адрес (48) + версия — обёртке не нужно пересчитывать адрес
+        if(idx<(unsigned)maxHits){ for(int i=0;i<32;i++) hits[idx*HITB+i]=seed[i]; for(int i=0;i<48;i++) hits[idx*HITB+32+i]=(u8)raw[i]; hits[idx*HITB+80]=(u8)v; }
+      }
     }
   }
 }
@@ -403,25 +490,66 @@ __global__ void k_validate(u64 baseCtr, unsigned* res, int RUN_ANY,int RUN_END,i
   if(a!=b) atomicAdd(&res[0],1u);
   if(a) atomicAdd(&res[1],1u);
 }
+// замер полноты сита (src/recall_eval.mjs): готовые адреса → «флаг W биты v5lite×10»; флаг: 1 старое сито, 2 v5-lite
+__global__ void k_flags(const char* addrs, int n, int* out, int RUN_ANY,int RUN_END,int DIST,int DWIN,int ASCN,int PAL,int ADIST){
+  int t=blockIdx.x*blockDim.x+threadIdx.x; if(t>=n) return;
+  char raw[48]; for(int i=0;i<48;i++) raw[i]=addrs[48*t+i];
+  char norm[48], lnorm[48]; for(int i=0;i<48;i++){ norm[i]=g_norm(raw[i]); lnorm[i]=g_leet(norm[i]); }
+  WScan s=scan_words<true>(raw,norm,lnorm);
+  out[4*t]=(is_gem_fast(raw,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST)?1:0) | (d_v5t && is_gem_v5(raw,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST)?2:0);
+  out[4*t+1]=s.W; out[4*t+2]=(s.tail?1:0)|(s.start?2:0)|(s.stretchTail?4:0)|(s.stretchAny?8:0); out[4*t+3]=(int)(v5lite_bits(raw)*10.f+0.5f);
+}
 // v10: selftest идёт ТЕМ ЖЕ пакетным путём, что и поиск (pubs_batch + addr_from_pub): поток берёт ITERS сидов подряд
+__constant__ int d_selVer;   // selftest: версия кошелька (0 W5 … 3 V3R1)
 __global__ void k_selftest(const u8* seeds, int n, u8* pubOut, u8* hashOut){
   int t=blockIdx.x*blockDim.x+threadIdx.x; if(t*ITERS>=n) return;
   u8 ss[ITERS][32], pubs[ITERS][32];
   for(int j=0;j<ITERS;j++){ int id=t*ITERS+j; for(int i=0;i<32;i++) ss[j][i]= id<n ? seeds[id*32+i] : (u8)(j+1); }
   pubs_batch(pubs, ss);
   for(int j=0;j<ITERS;j++){ int id=t*ITERS+j; if(id>=n) break;
-    u8 addrHash[32]; char raw[48]; addr_from_pub(pubs[j], addrHash, raw);
+    u8 addrHash[32]; char raw[48]; addr_from_pub_v(pubs[j], d_selVer, addrHash, raw);
     for(int i=0;i<32;i++){ pubOut[id*32+i]=pubs[j][i]; hashOut[id*32+i]=addrHash[i]; } }
 }
 
 // ---------------- host ----------------
 static void ck(cudaError_t e,const char*w){ if(e!=cudaSuccess){ fprintf(stderr,"CUDA err %s: %s\n",w,cudaGetErrorString(e)); exit(1);} }
+// каталог, где лежит сам exe (таблица tbl16.bin рядом с ним; обёртка запускает ядро из корня проекта)
+static std::string exe_dir(){
+  char buf[4096]={0};
+#ifdef _WIN32
+  GetModuleFileNameA(NULL,buf,sizeof buf);
+#else
+  ssize_t n=readlink("/proc/self/exe",buf,sizeof buf-1); if(n>0) buf[n]=0;
+#endif
+  std::string s(buf); size_t k=s.find_last_of("/\\"); return k==std::string::npos ? std::string(".") : s.substr(0,k);
+}
+// v12: таблица окна 16 бит в видеопамять; false — файла нет / не тот размер, тогда работаем старым путём
+static bool load_table(const std::string& path){
+  size_t sz=(size_t)WN*WE*15*8;
+  FILE* f=fopen(path.c_str(),"rb"); if(!f) return false;
+  u64* h=(u64*)malloc(sz); size_t got=fread(h,1,sz,f); int extra=fgetc(f); fclose(f);
+  if(got!=sz || extra!=EOF){ free(h); return false; }
+  u64* d; if(cudaMalloc(&d,sz)!=cudaSuccess){ free(h); return false; }
+  cudaMemcpy(d,h,sz,cudaMemcpyHostToDevice); free(h);
+  const u64* dc=d; cudaMemcpyToSymbol(d_tbl,&dc,sizeof dc);
+  return true;
+}
+static const char* VNAME[4]={"W5","V4R2","V3R2","V3R1"};
+// v13: случайность для базы сида — прямо у ОС (Windows: BCryptGenRandom, Linux: getrandom), без прослойки std::random_device
+// (в некоторых старых сборках MinGW она была детерминированной). Отказ ОС — останавливаемся: без стойкой базы ключи не нужны.
+static bool os_random(u8* buf, size_t n){
+#ifdef _WIN32
+  return BCryptGenRandom(NULL, buf, (ULONG)n, BCRYPT_USE_SYSTEM_PREFERRED_RNG) == 0;
+#else
+  size_t got=0; while(got<n){ ssize_t r=getrandom(buf+got, n-got, 0); if(r<=0) return false; got+=(size_t)r; } return true;
+#endif
+}
 static void hex(const u8*b,int n,char*o){ const char*H="0123456789abcdef"; for(int i=0;i<n;i++){o[2*i]=H[b[i]>>4];o[2*i+1]=H[b[i]&15];} o[2*n]=0; }
 
 int main(int argc, char** argv){
   bool selftest = (argc>1 && strcmp(argv[1],"selftest")==0);
   int threads=256, blocks=0;
-  int MAXT=70; bool noThermal=false;
+  int MAXT=70; bool noThermal=false; int NVER=1; std::string tablePath=exe_dir()+"/tbl16.bin"; bool noTable=false;
   // пороги гемов (по умолчанию «строго»)
   int RUN_ANY=6, RUN_END=5, DIST=2, DWIN=8, ASCN=6, PAL=11, ADIST=20;
   for(int i=1;i<argc;i++){
@@ -429,6 +557,10 @@ int main(int argc, char** argv){
     if(!strcmp(argv[i],"--threads")&&i+1<argc) threads=atoi(argv[i+1]);
     if(!strcmp(argv[i],"--max-temp")&&i+1<argc){ MAXT=atoi(argv[i+1]); }
     if(!strcmp(argv[i],"--no-thermal")) noThermal=true;
+    if(!strcmp(argv[i],"--versions")&&i+1<argc){ NVER=atoi(argv[i+1]); if(NVER<1) NVER=1; if(NVER>4) NVER=4; }
+    if(!strcmp(argv[i],"--table")&&i+1<argc) tablePath=argv[i+1];
+    if(!strcmp(argv[i],"--no-table")) noTable=true;
+    if(!strcmp(argv[i],"--v5t")&&i+1<argc){ int v=atoi(argv[i+1]); cudaMemcpyToSymbol(d_v5t,&v,sizeof v); }
     if(!strcmp(argv[i],"--run-any")&&i+1<argc) RUN_ANY=atoi(argv[i+1]);
     if(!strcmp(argv[i],"--run-end")&&i+1<argc) RUN_END=atoi(argv[i+1]);
     if(!strcmp(argv[i],"--dist")&&i+1<argc) DIST=atoi(argv[i+1]);
@@ -446,7 +578,10 @@ int main(int argc, char** argv){
   int ABSMAX=MAXT+10; if(ABSMAX>90) ABSMAX=90;  // аварийный стоп, не выше 90 (у карты замедление с 93-95)
   if(HARDT>=ABSMAX) HARDT=ABSMAX-2;
 
+  bool tblOk = !noTable && load_table(tablePath);
+  fprintf(stderr, tblOk ? "таблица окна 16 бит: %s (16 сложений на ключ)\n" : "таблица %s не найдена — медленный путь (окно 4 бита); сгенерировать: node cuda/gen_wtable.mjs\n", tablePath.c_str());
   if(selftest){
+    if(argc>3 && argv[3][0]!='-'){ int v=atoi(argv[3]); ck(cudaMemcpyToSymbol(d_selVer,&v,sizeof v),"sv"); }
     // читаем сиды hex из argv[2] (файл)
     FILE* f=fopen(argv[2],"r"); if(!f){ fprintf(stderr,"no seedfile\n"); return 1; }
     static u8 seeds[64*32]; int n=0; char line[200];
@@ -465,7 +600,20 @@ int main(int argc, char** argv){
     return 0;
   }
 
-  build_k2();
+  build_k2(); build_v5idx();
+  if(argc>1 && strcmp(argv[1],"flags")==0){
+    // vanity.exe flags <файл адресов> --all-dist 22 --v5t 140 → «флаг W биты v5lite×10 адрес» на строку
+    FILE* f=fopen(argv[2],"r"); if(!f){ fprintf(stderr,"нет файла\n"); return 1; }
+    std::string all; char line[256]; int n=0;
+    while(fgets(line,sizeof line,f)){ if(strlen(line)<48) continue; all.append(line,48); n++; }
+    fclose(f);
+    char* da; int* dout; ck(cudaMalloc(&da,(size_t)n*48),"fa"); ck(cudaMalloc(&dout,(size_t)n*16),"fo");
+    ck(cudaMemcpy(da,all.data(),(size_t)n*48,cudaMemcpyHostToDevice),"fc");
+    k_flags<<<(n+127)/128,128>>>(da,n,dout,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST); ck(cudaGetLastError(),"fl"); ck(cudaDeviceSynchronize(),"fs");
+    std::vector<int> o((size_t)n*4); ck(cudaMemcpy(o.data(),dout,(size_t)n*16,cudaMemcpyDeviceToHost),"fd");
+    for(int i=0;i<n;i++) printf("%d %d %d %d %.48s\n",o[4*i],o[4*i+1],o[4*i+2],o[4*i+3],all.data()+48*i);
+    return 0;
+  }
   if(argc>1 && strcmp(argv[1],"stats")==0){
     int L = argc>2 ? atoi(argv[2]) : 50;
     std::random_device rd; u8 b[32]; for(int i=0;i<32;i++) b[i]=(u8)rd(); ck(cudaMemcpyToSymbol(d_base,b,32),"sb");
@@ -521,13 +669,13 @@ int main(int argc, char** argv){
       if(t>=76){ while(t>70){ std::this_thread::sleep_for(std::chrono::milliseconds(300)); nvmlDeviceGetTemperature(vd,NVML_TEMPERATURE_GPU,&t);} }
       ck(cudaMemcpy(d_c,&zero,4,cudaMemcpyHostToDevice),"bz");
       cudaEventRecord(e0);
-      k_search<<<bb,threads>>>((u64)i*bb*threads*ITERS,d_h,d_c,65536,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST);
+      k_search<<<bb,threads>>>((u64)i*bb*threads*ITERS,d_h,d_c,65536,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST,NVER);
       cudaEventRecord(e1); ck(cudaEventSynchronize(e1),"bs");
       float m; cudaEventElapsedTime(&m,e0,e1); if(i>0) ms+=m;   // первый запуск — прогрев
       unsigned c; ck(cudaMemcpy(&c,d_c,4,cudaMemcpyDeviceToHost),"bcc"); if(i>0) hitsN+=c;
     }
     double N=(double)(L-1)*bb*threads*ITERS;
-    printf("BENCH ключей %.0f  ядро %.2f M/s  хитов %.1f на 1M (≈%.0f/с при этой скорости)\n",N,N/ms/1e3,hitsN/N*1e6,hitsN/(ms/1e3));
+    printf("BENCH ключей %.0f  ядро %.2f M/s  адресов %.2f M/s (версий %d)  хитов %.1f на 1M адресов (≈%.0f/с при этой скорости)\n",N,N/ms/1e3,N*NVER/ms/1e3,NVER,hitsN/(N*NVER)*1e6,hitsN/(ms/1e3));
     return 0;
   }
 
@@ -542,17 +690,26 @@ int main(int argc, char** argv){
   fprintf(stderr,"термозащита: цель~%dC (пропорц.), простой при %dC до %dC, аварийный стоп %dC%s\n",MAXT,HARDT,RESUMET,ABSMAX,noThermal?" (ОТКЛЮЧЕНА)":"");
   const int MAXH=65536;
   u8* d_hits; unsigned* d_cnt; ck(cudaMalloc(&d_hits,(size_t)MAXH*HITB),"h"); ck(cudaMalloc(&d_cnt,4),"c");
-  // База сида — из системного криптогенератора (MSVC random_device = RtlGenRandom), все 32 байта.
-  // Раньше: mt19937_64 от одного 32-битного числа -> всего ~2^32 вариантов базы.
-  std::random_device rd;
-  u8 base[32];
-  auto reseed=[&](){ for(int i=0;i<32;i+=4){ unsigned v=rd(); for(int k=0;k<4;k++) base[i+k]=(u8)(v>>(8*k)); } ck(cudaMemcpyToSymbol(d_base,base,32),"base"); };
+  // База сида — 32 байта из криптогенератора ОС (os_random). Раньше (до 2026-10-03): mt19937_64 от 32-битного числа.
+  // Проверки здравого смысла: база не нулевая и не совпадает с предыдущей (поломанный генератор так и выглядит).
+  u8 base[32]={0}, prevBase[32]={0};
+  auto reseed=[&](){
+    memcpy(prevBase,base,32);
+    bool zero=true, same=true;
+    if(!os_random(base,32)){ fprintf(stderr,"генератор случайных чисел ОС недоступен — стоп\n"); exit(2); }
+    for(int i=0;i<32;i++){ if(base[i]) zero=false; if(base[i]!=prevBase[i]) same=false; }
+    if(zero||same){ fprintf(stderr,"генератор случайных чисел ОС выдал подозрительную базу — стоп\n"); exit(2); }
+    ck(cudaMemcpyToSymbol(d_base,base,32),"base");
+  };
+  // видеопамять не очищается между процессами (cudaMalloc «The memory is not cleared»): секреты стираем сами
+  auto scrub=[&](){ u8 z[32]={0}; cudaMemcpyToSymbol(d_base,z,32); cudaMemset(d_hits,0,(size_t)MAXH*HITB); cudaDeviceSynchronize();
+    memset(base,0,32); memset(prevBase,0,32); };
   reseed();
   u64 baseCtr=0, total=0; unsigned zero=0;
   auto t0=std::chrono::steady_clock::now();
   u64 lastTotal=0; auto lastT=t0;
   fprintf(stderr,"GPU: %s | SM=%d | grid=%d x %d\n",prop.name,prop.multiProcessorCount,blocks,threads);
-  fprintf(stderr,"гемы: run_any>=%d run_end>=%d dist<=%d(win%d) asc>=%d pal>=%d | словарь %d слов\n",RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,NW);
+  fprintf(stderr,"гемы: run_any>=%d run_end>=%d dist<=%d(win%d) asc>=%d pal>=%d | словарь %d слов | версий кошелька %d\n",RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,NW,NVER);
   u64 perLaunch=(u64)blocks*threads*ITERS;
   auto lastTempT=t0;
   int launchesSinceReseed=0;
@@ -561,7 +718,7 @@ int main(int argc, char** argv){
   while(true){
     ck(cudaMemcpy(d_cnt,&zero,4,cudaMemcpyHostToDevice),"z");
     auto kt0=std::chrono::steady_clock::now();
-    k_search<<<blocks,threads>>>(baseCtr,d_hits,d_cnt,MAXH,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST);
+    k_search<<<blocks,threads>>>(baseCtr,d_hits,d_cnt,MAXH,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST,NVER);
     ck(cudaDeviceSynchronize(),"ks");
     kAcc+=std::chrono::duration<double>(std::chrono::steady_clock::now()-kt0).count();
     unsigned cnt; ck(cudaMemcpy(&cnt,d_cnt,4,cudaMemcpyDeviceToHost),"cc");
@@ -569,9 +726,11 @@ int main(int argc, char** argv){
     if(cnt>0){
       unsigned got=cnt<MAXH?cnt:MAXH;
       static u8 hits[MAXH*HITB]; ck(cudaMemcpy(hits,d_hits,(size_t)got*HITB,cudaMemcpyDeviceToHost),"hh");
+      cudaMemset(d_hits,0,(size_t)got*HITB);   // сиды находок не держим в видеопамяти дольше нужного
       char sh[65], ad[49]; ad[48]=0;
-      for(unsigned i=0;i<got;i++){ hex(hits+i*HITB,32,sh); memcpy(ad,hits+i*HITB+32,48); printf("HIT %s %s\n",sh,ad); }
-      fflush(stdout);
+      for(unsigned i=0;i<got;i++){ hex(hits+i*HITB,32,sh); memcpy(ad,hits+i*HITB+32,48); printf("HIT %s %s %s\n",sh,ad,VNAME[hits[i*HITB+80]&3]); }
+      memset(hits,0,(size_t)got*HITB); memset(sh,0,sizeof sh);
+      if(fflush(stdout)!=0) break;   // обёртка закрыла поток (умерла) — не греем карту впустую
     }
     baseCtr+=perLaunch; total+=perLaunch; launchesSinceReseed++;
 
@@ -617,14 +776,17 @@ int main(int argc, char** argv){
     if(dt>=1.0){
       double rate=(double)(total-lastTotal)/dt;
       // RATE total rate | доля времени в ядре, хитов/с — диагностика (обёртка читает первые два поля)
-      printf("RATE %llu %.0f %.2f %.0f\n",(unsigned long long)total,rate,kAcc/dt,(double)hitAcc/dt);
-      printf("TEMP %u %.0f %.2f\n",curTemp,shownSleep,duty); fflush(stdout);
+      // v12: total и rate — в адресах (ключей × версий), чтобы скорость на панели была сравнима между режимами
+      printf("RATE %llu %.0f %.2f %.0f\n",(unsigned long long)total*NVER,rate*NVER,kAcc/dt,(double)hitAcc/dt);
+      printf("TEMP %u %.0f %.2f\n",curTemp,shownSleep,duty);
+      if(fflush(stdout)!=0){ fprintf(stderr,"stdout закрыт — обёртка завершилась, выхожу\n"); break; }
       lastTotal=total; lastT=now; kAcc=0; hitAcc=0;
     }
     if(sleepMs>0) std::this_thread::sleep_for(std::chrono::milliseconds((int)sleepMs));
     // периодически обновляем случайную базу (32 байта)
     if(launchesSinceReseed>=2000){ reseed(); baseCtr=0; launchesSinceReseed=0; }
   }
+  scrub();
   if(nvok) nvmlShutdown();
   return 0;
 }

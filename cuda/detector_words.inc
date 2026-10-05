@@ -13,21 +13,21 @@
 #define KSINGLE KC
 #define KT (KC*(KC+1))
 __device__ __forceinline__ int kc(char c){ if(c>='a'&&c<='z')return c-'a'; if(c>='0'&&c<='9')return 26+c-'0'; if(c=='_')return 36; return 37; }
-// два индекса: буквенные слова (ищем по leet-строке) и слова с цифрами (по обычной)
-__device__ unsigned short K2S_L[KT], K2L_L[KT], K2S_D[KT], K2L_D[KT];   // v10: из __constant__ в global (разные потоки — разные индексы, constant сериализует)
-__device__ unsigned short K2IDX_L[NW], K2IDX_D[NW];
+// два индекса: буквенные слова (ищем по leet-строке) и слова с цифрами (по обычной).
+// v12 (2026-10-05): индекс по трём «пробежкам» текста. «Пробежка» — серия одинаковых символов (schmoo → s,c,h,m,o).
+// Список (c0,c1,c2) — слова из 3+ пробежек; (c0,c1,·) — из двух; (c0,·) — из одной. Списки отсортированы по индексу
+// слова, их слияние даёт тот же порядок, что перебор эталона (validate сверяет). Раньше (v10) перебиралась вся корзина
+// (c0,c1) с отсечкой по маске c2 — на каждом слове 3 обращения к памяти; теперь только подходящие слова: +20–40% скорости.
+#define K3SUB 40   // под-ключ: c2 (0..37) для слов из 3+ пробежек, 39 — для остальных
+__device__ unsigned short K3S_L[KT*K3SUB+1], K3S_D[KT*K3SUB+1];   // начало списка ключа k: [S[k], S[k+1])
+__device__ unsigned short K2IDX_L[NW], K2IDX_D[NW];                // слова, разложенные по спискам
 __device__ unsigned char WDIG[NW];   // 1 = в слове есть цифра
-// отсечка по третьей «пробежке» (2026-10-04, v10): для корзины (c0,c1) — маска допустимых c2 (бит 63 = есть слова из ≤2 пробежек,
-// им годится любое продолжение); W3[w] — c2 слова или 255 (≤2 пробежек). Текст «schmoo» → пробежки s,c,h. Только ускорение:
-// fuzzy жадно съедает всю пробежку, поэтому следующая буква текста обязана совпасть со следующей буквой слова.
-__device__ u64 K3M_L[KT], K3M_D[KT];
-__device__ unsigned char W3[NW];
 __device__ __forceinline__ int b64i(char c){ if(c>='A'&&c<='Z')return c-'A'; if(c>='a'&&c<='z')return c-'a'+26; if(c>='0'&&c<='9')return c-'0'+52; return c=='-'?62:63; }
 __device__ __forceinline__ int f_distinct(const char*s,int win){ u64 m=0; for(int i=48-win;i<48;i++) m|=1ull<<b64i(s[i]); return __popcll(m); }
 __device__ __forceinline__ char g_leet(char c){ switch(c){ case '0':return 'o'; case '1':return 'i'; case '3':return 'e'; case '4':return 'a'; case '5':return 's'; case '7':return 't'; case '8':return 'b'; default:return c; } }
 __device__ __forceinline__ bool g_isb(char n){ return n=='_' || (n>='0'&&n<='9'); }
 
-// stretchAny (2026-10-04, v9): значимое слово где угодно, внутри которого символ повторён 4+ раз подряд (Swwwwwwag в середине)
+// stretchAny (2026-10-04, v9): значимое слово где угодно, внутри которого символ повторён 4+ раз подряд (Swwwwwwwwag в середине)
 struct WScan { int W, L; bool tail, start, stretchTail, stretchAny; };   // W — значимых слов, L — сумма их длин
 
 __device__ __forceinline__ bool g_up(char c){ return c>='A'&&c<='Z'; }
@@ -62,18 +62,17 @@ __device__ int find_word(const char*raw, const char*X, const char*norm, int p, b
   if(FAST){
     int c0=kc(X[p]); int q=p; while(q<48 && X[q]==X[p]) q++;
     int c1 = q<48 ? kc(X[q]) : 37;
-    int ka=c0*(KC+1)+c1, kb=c0*(KC+1)+KSINGLE;
-    const unsigned short *S = digitType?K2S_D:K2S_L, *Ln = digitType?K2L_D:K2L_L, *I = digitType?K2IDX_D:K2IDX_L;
-    int ia=S[ka], ea=ia+Ln[ka], ib=S[kb], eb=ib+Ln[kb];
     int c2=38;
     if(q<48){ int r=q; while(r<48 && X[r]==X[q]) r++; if(r<48) c2=kc(X[r]); }
-    u64 m = digitType ? K3M_D[ka] : K3M_L[ka];
-    if(!((m>>63)&1) && !((m>>c2)&1)) ia=ea;          // ни одно слово корзины не продолжается так
-    if(ia>=ea && ib>=eb) return -1;
-    while(ia<ea || ib<eb){
-      int w; if(ib>=eb || (ia<ea && I[ia]<I[ib])) w=I[ia++]; else w=I[ib++];
+    const unsigned short *S = digitType?K3S_D:K3S_L, *I = digitType?K2IDX_D:K2IDX_L;
+    int ka=(c0*(KC+1)+c1)*K3SUB, kb=(c0*(KC+1)+KSINGLE)*K3SUB+39;
+    int i3=0,e3=0; if(c2<38){ i3=S[ka+c2]; e3=S[ka+c2+1]; }
+    int i2=S[ka+39], e2=S[ka+40], ib=S[kb], eb=S[kb+1];
+    while(i3<e3 || i2<e2 || ib<eb){
+      int w3 = i3<e3 ? I[i3] : 0x7fffffff, w2 = i2<e2 ? I[i2] : 0x7fffffff, wb = ib<eb ? I[ib] : 0x7fffffff;
+      int w;
+      if(w3<=w2 && w3<=wb){ w=w3; i3++; } else if(w2<=wb){ w=w2; i2++; } else { w=wb; ib++; }
       if(DLEN[w]<3) continue;
-      if(W3[w]!=255 && W3[w]!=c2) continue;
       int e=g_fuzzy(X,p,w); if(e<0) continue;
       if(g_accept(raw,norm,p,e,w,hardL)){ wOut=w; return e; }
     }
@@ -185,7 +184,7 @@ __device__ bool is_gem_fast(const char*raw,int RUN_ANY,int RUN_END,int DIST,int 
   return gem_rules<true>(raw,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST);
 }
 
-// хост: строим два индекса из DICT, который уже лежит на устройстве
+// хост: строим индексы из DICT, который уже лежит на устройстве
 static void build_k2(){
   static char dict[NW][WMAXL]; static int dlen[NW];
   cudaMemcpyFromSymbol(dict,DICT,sizeof dict); cudaMemcpyFromSymbol(dlen,DLEN,sizeof dlen);
@@ -193,33 +192,20 @@ static void build_k2(){
   static unsigned char dig[NW];
   for(int w=0;w<NW;w++){ dig[w]=0; for(int k=0;k<dlen[w];k++) if(dict[w][k]>='0'&&dict[w][k]<='9') dig[w]=1; }
   for(int t=0;t<2;t++){
-    static int key[NW]; static unsigned short s[KT], l[KT], idx[NW], fill[KT];
-    memset(l,0,sizeof l); memset(fill,0,sizeof fill);
+    static int key3[NW], cnt3[KT*K3SUB], fill3[KT*K3SUB]; static unsigned short s3[KT*K3SUB+1], idx3[NW];
+    memset(cnt3,0,sizeof cnt3); memset(fill3,0,sizeof fill3);
     for(int w=0;w<NW;w++){
       if(dig[w]!=t) continue;
-      int k=1; while(k<dlen[w] && dict[w][k]==dict[w][0]) k++;
-      key[w]=hk(dict[w][0])*(KC+1) + (k<dlen[w] ? hk(dict[w][k]) : KSINGLE);
-      l[key[w]]++;
+      int k=1; while(k<dlen[w] && dict[w][k]==dict[w][0]) k++;                 // конец 1-й пробежки
+      int ka=hk(dict[w][0])*(KC+1) + (k<dlen[w] ? hk(dict[w][k]) : KSINGLE);
+      int sub=39;
+      if(k<dlen[w]){ int k2=k; while(k2<dlen[w] && dict[w][k2]==dict[w][k]) k2++; if(k2<dlen[w]) sub=hk(dict[w][k2]); }
+      key3[w]=ka*K3SUB+sub; cnt3[key3[w]]++;
     }
-    int acc=0; for(int k=0;k<KT;k++){ s[k]=acc; acc+=l[k]; }
-    for(int w=0;w<NW;w++) if(dig[w]==t) idx[s[key[w]]+fill[key[w]]++]=(unsigned short)w;
-    static unsigned long long m3[KT]; memset(m3,0,sizeof m3);
-    for(int w=0;w<NW;w++){
-      if(dig[w]!=t) continue;
-      int k=1; while(k<dlen[w] && dict[w][k]==dict[w][0]) k++;          // конец 1-й пробежки
-      if(k>=dlen[w]) continue;                                          // одна пробежка — корзина KSINGLE, без отсечки
-      int k2=k; while(k2<dlen[w] && dict[w][k2]==dict[w][k]) k2++;      // конец 2-й
-      if(k2>=dlen[w]) m3[key[w]] |= 1ull<<63; else m3[key[w]] |= 1ull<<hk(dict[w][k2]);
-    }
-    if(t==0) cudaMemcpyToSymbol(K3M_L,m3,sizeof m3); else cudaMemcpyToSymbol(K3M_D,m3,sizeof m3);
-    if(t==0){ cudaMemcpyToSymbol(K2S_L,s,sizeof s); cudaMemcpyToSymbol(K2L_L,l,sizeof l); cudaMemcpyToSymbol(K2IDX_L,idx,sizeof idx); }
-    else    { cudaMemcpyToSymbol(K2S_D,s,sizeof s); cudaMemcpyToSymbol(K2L_D,l,sizeof l); cudaMemcpyToSymbol(K2IDX_D,idx,sizeof idx); }
+    int acc=0; for(int k=0;k<KT*K3SUB;k++){ s3[k]=(unsigned short)acc; acc+=cnt3[k]; } s3[KT*K3SUB]=(unsigned short)acc;
+    for(int w=0;w<NW;w++) if(dig[w]==t) idx3[s3[key3[w]]+fill3[key3[w]]++]=(unsigned short)w;
+    if(t==0){ cudaMemcpyToSymbol(K3S_L,s3,sizeof s3); cudaMemcpyToSymbol(K2IDX_L,idx3,sizeof idx3); }
+    else    { cudaMemcpyToSymbol(K3S_D,s3,sizeof s3); cudaMemcpyToSymbol(K2IDX_D,idx3,sizeof idx3); }
   }
   cudaMemcpyToSymbol(WDIG,dig,sizeof dig);
-  static unsigned char w3[NW];
-  for(int w=0;w<NW;w++){ int k=1; while(k<dlen[w] && dict[w][k]==dict[w][0]) k++;
-    int k2=k; while(k2<dlen[w] && dict[w][k2]==dict[w][k]) k2++;
-    w3[w] = (k<dlen[w] && k2<dlen[w]) ? (unsigned char)hk(dict[w][k2]) : 255; }
-  cudaMemcpyToSymbol(W3,w3,sizeof w3);
 }
-

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WIN = process.platform === 'win32';
 const EXE = path.join(ROOT, 'cuda', WIN ? 'vanity.exe' : 'vanity');
-const force = process.argv.includes('--force');
+let force = process.argv.includes('--force');
 
 const ok = (m) => console.log(`  OK    ${m}`);
 function fail(step, msg, fix) {
@@ -87,6 +87,15 @@ if (WIN) {
   ok('MSVC: ' + vcvars);
 }
 
+// 5б. Словарь сита v5-lite — из той же оценки, что в src/score_v5.mjs (правки вкуса сразу доходят до видеокарты)
+{
+  const g = run(process.execPath, [path.join(ROOT, 'src', 'gpu_dict_v5.mjs')], { cwd: ROOT });
+  if (g.status !== 0) fail('словарь сита', ((g.stdout || '') + (g.stderr || '')).trim().slice(0, 1500), ['Проверьте src/score_v5.mjs и data/: они должны загружаться без ошибок (npm test).']);
+  const hdr = path.join(ROOT, 'cuda', 'v5dict.h');
+  if (fs.existsSync(EXE) && fs.statSync(hdr).mtimeMs > fs.statSync(EXE).mtimeMs && !force) { force = true; ok('словарь сита изменился — пересоберу ядро'); }
+  else ok((g.stdout || '').trim());
+}
+
 // 6. Сборка ядра
 if (fs.existsSync(EXE) && !force) ok('ядро уже собрано (пересобрать: npm run setup -- --force)');
 else {
@@ -112,6 +121,17 @@ else {
   ok(`ядро собрано за ${Math.round((Date.now() - t0) / 1000)} с`);
 }
 
+// 6б. Таблица окна 16 бит (60 МБ, генерируется за несколько секунд; без неё ядро вдвое медленнее)
+const TBL = path.join(ROOT, 'cuda', 'tbl16.bin');
+if (fs.existsSync(TBL) && fs.statSync(TBL).size === 62914560 && !force) ok('таблица cuda/tbl16.bin на месте');
+else {
+  const g = run(process.execPath, [path.join(ROOT, 'cuda', 'gen_wtable.mjs')], { cwd: ROOT });
+  if (g.status !== 0) fail('таблица ускорения', ((g.stdout || '') + (g.stderr || '')).trim().slice(0, 1500), [
+    'Без таблицы ядро тоже работает, но вдвое медленнее. Попробуйте ещё раз: npm run setup -- --force',
+  ]);
+  ok((g.stdout || '').trim());
+}
+
 // 7. Самопроверка: ядро против официальной @ton/ton
 const st = run(process.execPath, [path.join(ROOT, 'ref', 'selftest.mjs')], { cwd: ROOT });
 if (st.status !== 0) fail('самопроверка', (st.stdout + st.stderr).trim().slice(0, 1500), [
@@ -119,6 +139,13 @@ if (st.status !== 0) fail('самопроверка', (st.stdout + st.stderr).tr
   'Если не помогло — создайте issue с текстом выше и моделью видеокарты.',
 ]);
 ok(st.stdout.trim());
+
+// 7б. Сито v5-lite == оценка src/score_v5.mjs
+const v5c = run(process.execPath, [path.join(ROOT, 'ref', 'check_v5lite.mjs')], { cwd: ROOT });
+if (v5c.status !== 0) fail('сверка сита v5-lite', ((v5c.stdout || '') + (v5c.stderr || '')).trim().slice(0, 1500), [
+  'Пересоберите: npm run setup -- --force. Если не помогло — создайте issue с этим текстом.',
+]);
+ok((v5c.stdout || '').trim());
 
 // 8. Быстрый детектор == эталонный (несколько секунд)
 const v = run(EXE, ['validate', '3'], { cwd: path.join(ROOT, 'cuda') });

@@ -24,6 +24,23 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run smoke
+      - name: docs/index.html (Красота TON-адреса) собран из текущих исходников
+        run: node scripts/build-checker.mjs && git diff --exit-code docs/index.html
+      - name: docs/generate.html (генератор в браузере) собран из текущих исходников
+        run: node scripts/build-generator.mjs && git diff --exit-code docs/generate.html
+
+  cuda-build:
+    name: CUDA kernel compiles (Linux, no GPU)
+    runs-on: ubuntu-latest
+    container: nvidia/cuda:12.6.3-devel-ubuntu24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: nvcc (sm_75, sm_86, sm_89)
+        working-directory: cuda
+        run: |
+          nvcc -O3 -gencode arch=compute_75,code=sm_75 -gencode arch=compute_86,code=sm_86 -gencode arch=compute_89,code=sm_89 \
+            -o vanity vanity.cu -L/usr/local/cuda/lib64/stubs -lnvidia-ml
+          ls -la vanity
 
   no-secrets:
     name: No key files in the repo
