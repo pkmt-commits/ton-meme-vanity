@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./gems.jsonl)",
+      "Read(./favorites.jsonl)",
+      "Read(./found.secret.jsonl)",
+      "Read(./**/hits*.txt)",
+      "Read(./telegram.config.json)",
+      "Edit(./gems.jsonl)",
+      "Edit(./favorites.jsonl)"
+    ]
+  }
+}

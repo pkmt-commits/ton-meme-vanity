@@ -10,6 +10,7 @@ The files `gems.jsonl`, `favorites.jsonl`, `found.secret.jsonl`, `hits*.txt` con
 (`seedHex`, `secretKeyHex`, or `HIT <seed> <address>` lines). Anyone who sees a key can steal the money.
 
 - NEVER print, `cat`, `head`, `tail`, `grep`, open, summarize or upload these files, not even "just a few lines".
+  (For Claude Code, `.claude/settings.json` in this repo denies the Read tool on them — do not work around it with shell commands.)
 - To show results, ONLY use `npm run top` (prints addresses and scores, never keys).
 - NEVER commit these files, paste them into chat, send them to any API, website or another tool.
 - The ONLY exception: the user explicitly asks for the key of ONE specific address to import it into their wallet.
@@ -29,7 +30,7 @@ It is safe to run repeatedly. It checks Node.js, NVIDIA driver, CUDA Toolkit and
 the GPU architecture, compiles `cuda/vanity.cu`, then runs two self-checks. Success looks like:
 
 ```
-  OK    selftest: 20/20 совпало с @ton/ton
+  OK    selftest: 100/100 совпало с @ton/ton (W5, V4R2, V3R2, V3R1; с таблицей и без)
   OK    сверка детектора: 0 расхождений
   Готово.
 ```
@@ -100,6 +101,6 @@ the imported address with the found address character by character before sendin
 ## Do not
 
 - Do not "optimize" or rewrite `cuda/vanity.cu` / `cuda/detector_words.inc` unless asked; if you do, `npm run setup -- --force`
-  must pass (selftest 20/20 and 0 mismatches) before the user uses it.
+  must pass (selftest 100/100 and 0 mismatches) before the user uses it.
 - Do not change how seeds are generated (`derive_seed` in `cuda/vanity.cu`). It is security-critical.
 - Do not add telemetry, uploads or any network calls other than the existing Telegram bot.

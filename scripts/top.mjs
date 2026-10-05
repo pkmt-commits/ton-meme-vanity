@@ -20,8 +20,8 @@ for await (const line of rl) {
   let j; try { j = JSON.parse(line); } catch { continue; }
   if (!j.uq) continue;
   const prev = best.get(j.uq);
-  if (!prev || (j.score || 0) > prev.score) best.set(j.uq, { uq: j.uq, score: j.score || 0, label: j.label || '', ts: j.ts || '' });
+  if (!prev || (j.score || 0) > prev.score) best.set(j.uq, { uq: j.uq, score: j.score || 0, label: j.label || '', ts: j.ts || '', ver: j.ver || 'W5' });
 }
 const rows = [...best.values()].sort((a, b) => b.score - a.score).slice(0, N);
 console.log(`${path.basename(file)}: адресов ${best.size}, показываю ${rows.length} лучших (score, метка, адрес)\n`);
-for (const r of rows) console.log(`${String(r.score).padStart(5)}  ${r.label.padEnd(26).slice(0, 26)}  ${r.uq}`);
+for (const r of rows) console.log(`${String(r.score).padStart(5)}  ${r.label.padEnd(26).slice(0, 26)}  ${r.uq}${r.ver !== 'W5' ? '  (' + r.ver + ')' : ''}`);

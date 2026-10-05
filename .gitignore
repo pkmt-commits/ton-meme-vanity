@@ -20,3 +20,4 @@ cuda/*.lib
 node_modules/
 ref/vectors.json
 cuda/testseeds.txt
+cuda/tbl*.bin
