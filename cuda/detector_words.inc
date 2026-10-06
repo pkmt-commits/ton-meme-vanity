@@ -1,38 +1,38 @@
-// ---------------- детектор слов v2 (подключается в vanity.cu) ----------------
-// Правила (2026-10-03):
-//  * слово может начинаться сразу после «UQ» (позиция 2) или после границы: '_' '-' или цифра;
-//  * слово должно кончаться на границе (или в конце адреса);
-//  * leet: в буквенных словах цифры читаются как буквы 0>o 1>i 3>e 4>a 5>s 7>t 8>b;
-//    слова с цифрами (420, 1337, f00d) сравниваются как есть;
-//  * гем: 3+ слова, или 2+ слова с хвостом (в т.ч. начало+хвост), ИЛИ  слово в хвосте + ещё одна редкость
-//    (растяжка сильного слова, 7+ разделителей, серия 4+, <=25 разных символов).
-//  * (2026-10-04) граница по РЕГИСТРУ: буквенное слово от 4 букв ровного регистра (ВСЁ / всё / Всё) может начинаться
-//    и кончаться на контрасте регистра с соседней буквой: xyzHOMEabc, XYZhomeABC, abcHome, homeXyz. Пользователь:
-//    «разделение визуальное очень важно, и не только - и _, но и разницей регистров». Таких слов в ~7 раз больше.
-#define KC 38   // 0-25 a-z, 26-35 цифры, 36 '_', 37 прочее
+// ---------------- word detector v2 (included from vanity.cu) ----------------
+// Rules (2026-10-03):
+//  * a word may start right after "UQ" (position 2) or after a boundary: '_' '-' or a digit;
+//  * a word must end at a boundary (or at the end of the address);
+//  * leet: in letter-only words, digits are read as letters 0>o 1>i 3>e 4>a 5>s 7>t 8>b;
+//    words with digits (420, 1337, f00d) are compared as is;
+//  * gem: 3+ words, or 2+ words with a tail (incl. start+tail), OR a word in the tail + one more rarity
+//    (a stretched strong word, 7+ separators, a run of 4+, <=25 distinct characters).
+//  * (2026-10-04) boundary by CASE: a letter word of 4+ letters in a uniform case (UPPER / lower / Capitalized) may start
+//    and end at a case contrast with the neighbouring letter: xyzHOMEabc, XYZhomeABC, abcHome, homeXyz. Visual separation
+//    comes not only from - and _ but also from a case difference. There are ~7 times more such words.
+#define KC 38   // 0-25 a-z, 26-35 digits, 36 '_', 37 other
 #define KSINGLE KC
 #define KT (KC*(KC+1))
 __device__ __forceinline__ int kc(char c){ if(c>='a'&&c<='z')return c-'a'; if(c>='0'&&c<='9')return 26+c-'0'; if(c=='_')return 36; return 37; }
-// два индекса: буквенные слова (ищем по leet-строке) и слова с цифрами (по обычной).
-// v12 (2026-10-05): индекс по трём «пробежкам» текста. «Пробежка» — серия одинаковых символов (schmoo → s,c,h,m,o).
-// Список (c0,c1,c2) — слова из 3+ пробежек; (c0,c1,·) — из двух; (c0,·) — из одной. Списки отсортированы по индексу
-// слова, их слияние даёт тот же порядок, что перебор эталона (validate сверяет). Раньше (v10) перебиралась вся корзина
-// (c0,c1) с отсечкой по маске c2 — на каждом слове 3 обращения к памяти; теперь только подходящие слова: +20–40% скорости.
-#define K3SUB 40   // под-ключ: c2 (0..37) для слов из 3+ пробежек, 39 — для остальных
-__device__ unsigned short K3S_L[KT*K3SUB+1], K3S_D[KT*K3SUB+1];   // начало списка ключа k: [S[k], S[k+1])
-__device__ unsigned short K2IDX_L[NW], K2IDX_D[NW];                // слова, разложенные по спискам
-__device__ unsigned char WDIG[NW];   // 1 = в слове есть цифра
+// two indexes: letter words (looked up in the leet string) and words with digits (in the plain one).
+// v12 (2026-10-05): an index over three "runs" of the text. A "run" is a series of identical characters (schmoo → s,c,h,m,o).
+// The list (c0,c1,c2) holds words with 3+ runs; (c0,c1,·) with two; (c0,·) with one. The lists are sorted by word
+// index, so merging them gives the same order as the reference scan (validate checks it). Previously (v10) the whole bucket
+// (c0,c1) was scanned with a c2 mask cut-off — 3 memory accesses per word; now only the matching words: +20–40% speed.
+#define K3SUB 40   // sub-key: c2 (0..37) for words with 3+ runs, 39 for the rest
+__device__ unsigned short K3S_L[KT*K3SUB+1], K3S_D[KT*K3SUB+1];   // start of the list for key k: [S[k], S[k+1])
+__device__ unsigned short K2IDX_L[NW], K2IDX_D[NW];                // words laid out by list
+__device__ unsigned char WDIG[NW];   // 1 = the word contains a digit
 __device__ __forceinline__ int b64i(char c){ if(c>='A'&&c<='Z')return c-'A'; if(c>='a'&&c<='z')return c-'a'+26; if(c>='0'&&c<='9')return c-'0'+52; return c=='-'?62:63; }
 __device__ __forceinline__ int f_distinct(const char*s,int win){ u64 m=0; for(int i=48-win;i<48;i++) m|=1ull<<b64i(s[i]); return __popcll(m); }
 __device__ __forceinline__ char g_leet(char c){ switch(c){ case '0':return 'o'; case '1':return 'i'; case '3':return 'e'; case '4':return 'a'; case '5':return 's'; case '7':return 't'; case '8':return 'b'; default:return c; } }
 __device__ __forceinline__ bool g_isb(char n){ return n=='_' || (n>='0'&&n<='9'); }
 
-// stretchAny (2026-10-04, v9): значимое слово где угодно, внутри которого символ повторён 4+ раз подряд (Swwwwwwwwag в середине)
-struct WScan { int W, L; bool tail, start, stretchTail, stretchAny; };   // W — значимых слов, L — сумма их длин
+// stretchAny (2026-10-04, v9): a significant word anywhere with a character repeated 4+ times in a row inside it (Swwwwwwwwag in the middle)
+struct WScan { int W, L; bool tail, start, stretchTail, stretchAny; };   // W = number of significant words, L = sum of their lengths
 
 __device__ __forceinline__ bool g_up(char c){ return c>='A'&&c<='Z'; }
 __device__ __forceinline__ bool g_lo(char c){ return c>='a'&&c<='z'; }
-// регистр слова raw[p..e): 1 — ВСЁ, 2 — всё, 3 — Всё (с заглавной), 0 — рваный (цифры leet не считаются)
+// case of the word raw[p..e): 1 = UPPER, 2 = lower, 3 = Capitalized, 0 = ragged case (leet digits are not counted)
 __device__ int g_wcls(const char*raw,int p,int e){
   int nu=0,nl=0; bool capFirst=false,seen=false,restL=true;
   for(int k=p;k<e;k++){ char c=raw[k];
@@ -40,12 +40,12 @@ __device__ int g_wcls(const char*raw,int p,int e){
     else if(g_lo(c)){ nl++; seen=true; } }
   if(nl==0) return 1; if(nu==0) return 2; return (capFirst&&restL) ? 3 : 0;
 }
-// контраст регистра соседа c с краем слова класса cl (left — сосед слева)
+// case contrast of the neighbour c with the edge of a word of class cl (left = the neighbour is on the left)
 __device__ __forceinline__ bool g_cedge(char c,int cl,bool left){
   if(cl==1) return g_lo(c); if(cl==2) return g_up(c); if(cl==3) return left ? g_lo(c) : g_up(c); return false;
 }
-// годится ли слово w в raw[p..e): жёсткие границы (край / - _ / цифра) с обеих сторон — как раньше;
-// иначе — граница по регистру: буквенное слово от 4 букв ровного регистра, контраст там, где нет жёсткой границы
+// does the word w fit raw[p..e): hard boundaries (edge / - _ / digit) on both sides — as before;
+// otherwise a case boundary: a letter word of 4+ letters in a uniform case, with a contrast wherever there is no hard boundary
 __device__ __forceinline__ bool g_accept(const char*raw,const char*norm,int p,int e,int w,bool hardL){
   bool hardR = e==48 || g_isb(norm[e]);
   if(hardL && hardR) return true;
@@ -56,7 +56,7 @@ __device__ __forceinline__ bool g_accept(const char*raw,const char*norm,int p,in
   return true;
 }
 
-// первое (по индексу) слово данного типа, совпавшее в p и с годной границей (g_accept); конец или -1
+// the first (by index) word of the given type that matches at p and has a valid boundary (g_accept); the end, or -1
 template<bool FAST>
 __device__ int find_word(const char*raw, const char*X, const char*norm, int p, bool digitType, bool hardL, int &wOut){
   if(FAST){
@@ -91,15 +91,15 @@ __device__ WScan scan_words(const char*raw, const char*norm, const char*lnorm){
   WScan r{0,0,false,false,false,false};
   for(int p=2;p<48;p++){
     bool hardL=(p==2)||g_isb(norm[p-1]);
-    // старт по регистру: буква после буквы другого регистра (abcHOME, ABChome)
+    // start by case: a letter after a letter of the other case (abcHOME, ABChome)
     bool caseL=!hardL && ((g_up(raw[p])&&g_lo(raw[p-1])) || (g_lo(raw[p])&&g_up(raw[p-1])));
     if(!hardL && !caseL) continue;
     int w=-1;
     int e=find_word<FAST>(raw,lnorm,norm,p,false,hardL,w);
-    if(e<0 && hardL) e=find_word<FAST>(raw,norm,norm,p,true,true,w);   // слова с цифрами (420, 1337) — только после жёсткой границы
+    if(e<0 && hardL) e=find_word<FAST>(raw,norm,norm,p,true,true,w);   // words with digits (420, 1337) — only after a hard boundary
     if(e<0) continue;
-    // значимость короткого слова
-    // 3 буквы: с одной стороны настоящий разделитель (- _ или край), с другой — хотя бы цифра
+    // significance of a short word
+    // 3 letters: a real separator on one side (- _ or the edge), at least a digit on the other
     bool lReal=(p==2 || norm[p-1]==0x5f), rReal=(e==48 || norm[e]==0x5f);
     bool sig = DLEN[w]>=4 || lReal || rReal;
     if(!sig){ p=e-1; continue; }
@@ -107,13 +107,13 @@ __device__ WScan scan_words(const char*raw, const char*norm, const char*lnorm){
     if(p==2) r.start=true;
     if(!r.stretchAny){ int run=1; for(int k=p+1;k<e;k++){ if(raw[k]==raw[k-1]){ if(++run>=4){ r.stretchAny=true; break; } } else run=1; } }
     bool tail=true; for(int k=e;k<48;k++) if(!g_isb(norm[k])){ tail=false; break; }
-    if(tail){ r.tail=true; if(IS_SLANG[w]){ int dup=0; for(int k=p+1;k<e;k++) if(norm[k]==norm[k-1]) dup++; if(dup>=2) r.stretchTail=true; } }  // 2+ повтора букв в слове
-    p=e-1;   // следующее слово — только после этого
+    if(tail){ r.tail=true; if(IS_SLANG[w]){ int dup=0; for(int k=p+1;k<e;k++) if(norm[k]==norm[k-1]) dup++; if(dup>=2) r.stretchTail=true; } }  // 2+ repeated letters in the word
+    p=e-1;   // the next word only after this one
   }
   return r;
 }
 
-// --- линзы (2026-10-04): смайлы на контрасте, мемные числа, серия/лесенка сразу после UQ ---
+// --- lenses (2026-10-04): smileys by contrast, meme numbers, a run/ladder right after UQ ---
 __device__ __forceinline__ int g_cat(char c){ if(c>='a'&&c<='z')return 1; if(c>='A'&&c<='Z')return 2; if(c>='0'&&c<='9')return 3; return 4; }
 __device__ bool g_face(const char*raw){
   const char* F[]={"-_-","o_O","O_o","o_o","O_O","0_0","x_x","X_X","T_T","u_u","U_U","UwU","OwO","uwu","owo"};
@@ -140,7 +140,7 @@ __device__ bool g_memnum(const char*raw){
   }
   return false;
 }
-// длина серии одного символа или лесенки сразу после UQ
+// length of a run of one character or of a ladder right after UQ
 __device__ int g_startpat(const char*raw){
   int k=1; while(2+k<48 && raw[2+k]==raw[2]) k++;
   int a=1; while(2+a<48 && raw[2+a]==raw[2+a-1]+1) a++;
@@ -164,13 +164,13 @@ __device__ bool gem_rules(const char*raw,int RUN_ANY,int RUN_END,int DIST,int DW
 #else
   WScan s=scan_words<FAST>(raw,norm,lnorm);
 #endif
-  if(s.W>=3) return true;                       // 3+ значимых слова
-  if(s.stretchAny) return true;                  // растянутое слово где угодно (v9)
-  if(s.W>=2 && s.tail) return true;              // 2+ слова, одно из них в хвосте (в т.ч. начало+хвост)
-  if(s.tail && (s.stretchTail || seps>=7 || runAny>=4 || dist46<=25)) return true; // слово в хвосте + ещё редкость
+  if(s.W>=3) return true;                       // 3+ significant words
+  if(s.stretchAny) return true;                  // a stretched word anywhere (v9)
+  if(s.W>=2 && s.tail) return true;              // 2+ words, one of them in the tail (incl. start+tail)
+  if(s.tail && (s.stretchTail || seps>=7 || runAny>=4 || dist46<=25)) return true; // a word in the tail + one more rarity
   int sp=g_startpat(raw);
-  if(sp>=5) return true;                                          // UQAAAAA / UQABCDE — как пример из документации
-  if((s.tail||s.start) && (sp>=4 || g_face(raw) || g_memnum(raw))) return true;  // слово + смайл/мем-число/старт
+  if(sp>=5) return true;                                          // UQAAAAA / UQABCDE — like an example from the documentation
+  if((s.tail||s.start) && (sp>=4 || g_face(raw) || g_memnum(raw))) return true;  // a word + smiley/meme number/start
   return false;
 }
 
@@ -179,12 +179,12 @@ __device__ bool is_gem(const char*raw,int RUN_ANY,int RUN_END,int DIST,int DWIN,
 }
 __device__ bool is_gem_fast(const char*raw,int RUN_ANY,int RUN_END,int DIST,int DWIN,int ASCN,int PAL,int ADIST){
 #ifdef NOGEM
-  return raw[47]=='~';  // замер: только вычисление адреса, без проверок
+  return raw[47]=='~';  // measurement: only the address computation, no checks
 #endif
   return gem_rules<true>(raw,RUN_ANY,RUN_END,DIST,DWIN,ASCN,PAL,ADIST);
 }
 
-// хост: строим индексы из DICT, который уже лежит на устройстве
+// host: build the indexes from DICT, which already sits on the device
 static void build_k2(){
   static char dict[NW][WMAXL]; static int dlen[NW];
   cudaMemcpyFromSymbol(dict,DICT,sizeof dict); cudaMemcpyFromSymbol(dlen,DLEN,sizeof dlen);
@@ -196,7 +196,7 @@ static void build_k2(){
     memset(cnt3,0,sizeof cnt3); memset(fill3,0,sizeof fill3);
     for(int w=0;w<NW;w++){
       if(dig[w]!=t) continue;
-      int k=1; while(k<dlen[w] && dict[w][k]==dict[w][0]) k++;                 // конец 1-й пробежки
+      int k=1; while(k<dlen[w] && dict[w][k]==dict[w][0]) k++;                 // end of the 1st run
       int ka=hk(dict[w][0])*(KC+1) + (k<dlen[w] ? hk(dict[w][k]) : KSINGLE);
       int sub=39;
       if(k<dlen[w]){ int k2=k; while(k2<dlen[w] && dict[w][k2]==dict[w][k]) k2++; if(k2<dlen[w]) sub=hk(dict[w][k2]); }

@@ -1,7 +1,7 @@
-// Сверка сита v5-lite (оценка v5 на видеокарте) с настоящей оценкой src/score_v5.mjs.
-// 3000 детерминированных «адресов» со вставленными словами и фразами (в конце, в начале, в середине; разный регистр и
-// разделители) → ядро в режиме flags считает приближённые очки → сравниваем с scoreV5. Адреса — просто строки, ключей нет.
-//   node ref/check_v5lite.mjs            (нужен собранный cuda/vanity.exe)
+// Check of the v5-lite sieve (the v5 score on the GPU) against the real score from src/score_v5.mjs.
+// 3000 deterministic "addresses" with embedded words and phrases (at the end, at the start, in the middle; varied case and
+// separators) → the kernel in flags mode computes approximate scores → we compare them with scoreV5. The addresses are just strings, no keys.
+//   node ref/check_v5lite.mjs            (needs a built cuda/vanity.exe)
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -25,9 +25,9 @@ for (let n = 0; n < 3000; n++) {
   let body = Array.from({ length: 46 }, () => B64[Math.floor(rnd() * 64)]).join('');
   const k = 1 + Math.floor(rnd() * 3);
   let phrase = ''; for (let i = 0; i < k; i++) phrase += (i ? sep() : '') + styl(pick(words));
-  if (rnd() < 0.15) phrase = phrase.replace(/([a-z])/i, (c) => c.repeat(2 + Math.floor(rnd() * 4)));   // растяжка
+  if (rnd() < 0.15) phrase = phrase.replace(/([a-z])/i, (c) => c.repeat(2 + Math.floor(rnd() * 4)));   // stretched letters
   phrase = phrase.slice(0, 20);
-  // фраза ровно в конце / в начале / в середине («почти хвост» с мусором после фразы ядро не считает — см. v5lite.inc)
+  // phrase exactly at the end / at the start / in the middle (the kernel does not count a "near tail" with junk after the phrase — see v5lite.inc)
   const where = rnd(), sp = sep();
   if (where < 0.65) body = body.slice(0, 46 - phrase.length - sp.length) + sp + phrase;
   else if (where < 0.9) body = (phrase + sp + body).slice(0, 46);
@@ -48,6 +48,6 @@ for (const uq of cases) {
 }
 worst.sort((a, b) => b[0] - a[0]);
 const pct = (100 * near / cases.length).toFixed(1), rec = n150 ? (100 * ok150 / n150).toFixed(1) : '100';
-console.log(`v5-lite: оценка GPU = v5 ±2 очка у ${pct}% из ${cases.length}; полнота при 150+: ${rec}% (${ok150}/${n150})`);
+console.log(`v5-lite: GPU score = v5 ±2 points for ${pct}% of ${cases.length}; recall at 150+: ${rec}% (${ok150}/${n150})`);
 if (process.argv.includes('-v')) for (const w of worst.slice(0, 15)) console.log('  ', w[1], 'gpu', w[2], w[3]);
 process.exit(near / cases.length >= 0.95 && (!n150 || ok150 / n150 >= 0.95) ? 0 : 1);

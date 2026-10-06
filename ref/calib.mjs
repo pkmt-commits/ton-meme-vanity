@@ -1,5 +1,5 @@
-// Выводим константы W5R1 из официальной либы (читая биты через .at),
-// проверяем против векторов и сохраняем calib.json для быстрого ядра.
+// Derive the W5R1 constants from the official library (reading bits via .at),
+// check them against the test vectors and save calib.json for the fast kernel.
 import { WalletContractV5R1 } from '@ton/ton';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -9,10 +9,10 @@ const vectors = JSON.parse(fs.readFileSync(new URL('./vectors.json', import.meta
 
 function bitsToAugmentedBytes(bs) {
   const n = bs.length;
-  const nBytes = Math.ceil((n + 1) / 8); // +1 бит маркера
+  const nBytes = Math.ceil((n + 1) / 8); // +1 marker bit
   const out = Buffer.alloc(nBytes);
   for (let i = 0; i < n; i++) if (bs.at(i)) out[i >> 3] |= 1 << (7 - (i & 7));
-  // маркер augmentation: '1' после последнего бита
+  // augmentation marker: a '1' after the last bit
   out[n >> 3] |= 1 << (7 - (n & 7));
   return out;
 }
@@ -24,22 +24,22 @@ function dataCellHash(dataCell) {
   return sha256(Buffer.concat([Buffer.from([0x00, d2of(n)]), aug]));
 }
 
-// шаблон при pubkey=0
+// template for pubkey=0
 const w0 = WalletContractV5R1.create({ workchain: 0, publicKey: Buffer.alloc(32) });
 const dataBits = w0.init.data.bits.length;
 const templateAug = bitsToAugmentedBytes(w0.init.data.bits);
 
-// найдём смещение pubkey: поставим pub с единственным старшим битом
+// find the pubkey offset: use a pub with only its top bit set
 const pub1 = Buffer.alloc(32); pub1[0] = 0x80;
 const w1 = WalletContractV5R1.create({ workchain: 0, publicKey: pub1 });
 let off = -1;
 for (let i = 0; i < dataBits; i++) if (w0.init.data.bits.at(i) !== w1.init.data.bits.at(i)) { off = i; break; }
 if (off < 0) throw new Error('pubkey offset not found');
 
-// соберём CONST_PREFIX для StateInit: representation = d1||d2||own || depths || hashes(code,data)
-// Возьмём из либы готовый StateInit cell, прочитаем его биты и refs.
-const init = w0.init; // beginCell StateInit построит contractAddress; возьмём через beginCell
-// Соберём StateInit-ячейку так же, как делает @ton contractAddress:
+// build CONST_PREFIX for StateInit: representation = d1||d2||own || depths || hashes(code,data)
+// Take the ready-made StateInit cell from the library and read its bits and refs.
+const init = w0.init; // contractAddress builds the StateInit with beginCell; we do the same via beginCell
+// Build the StateInit cell the same way @ton's contractAddress does:
 import { beginCell, storeStateInit } from '@ton/core';
 const siCell = beginCell().store(storeStateInit(init)).endCell();
 const siBits = siCell.bits.length;
@@ -56,7 +56,7 @@ const CONST_PREFIX = Buffer.concat([
 ]);
 const DATA_D2 = d2of(dataBits);
 
-// самопроверка: для каждого вектора addrHash = sha256(CONST_PREFIX || dataHash(pub))
+// self-check: for each vector, addrHash = sha256(CONST_PREFIX || dataHash(pub))
 function addrHashFromPub(pub) {
   const aug = Buffer.from(templateAug);
   let bit = off;

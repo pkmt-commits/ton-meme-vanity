@@ -1,5 +1,5 @@
-// Отборный словарь «красивых» слов. Короткие (3 буквы) берутся ТОЛЬКО отсюда.
-// Правь свободно: одно слово — один токен, регистр не важен.
+// Curated dictionary of "beautiful" words. Short ones (3 letters) are taken ONLY from here.
+// Edit freely: one word per token, case does not matter.
 export const CURATED = `
 ton toncoin nft nfts dao dex defi pump dump moon lambo hodl hold rekt rug rugs wagmi ngmi lfg fomo yolo
 whale whales shark doge pepe shib bonk notcoin dogs hamster durov telegram gram wallet cash money rich
@@ -38,8 +38,8 @@ krasava kruto topchik lox loh nahui pizda huy ebal durak zaebis davai poehali pr
 babki kesh zoloto almaz car tsar korol boss moroz medved kremlin rus russia
 `.split(/\s+/).filter(Boolean);
 
-// Любимые темы: мат, рофлы, ирония, крипто-сленг, 420, выпивка, сиськи, луна.
-// Эти слова получают повышенный вес при оценке.
+// Favorite themes: profanity, rofl jokes, irony, crypto slang, 420, booze, boobs, moon.
+// These words get extra weight in scoring.
 export const THEMES = {
   crypto: `soon wen ser gm gn wagmi ngmi lfg hodl rekt rug rugged pump dump moon mooning lambo degen ape aped
     fud fomo bags bag shill shiller copium hopium cope seethe ponzi scam scammer airdrop farm farming rekt

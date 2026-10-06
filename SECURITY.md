@@ -1,27 +1,25 @@
-# Безопасность / Security
+# Security
 
-Этот инструмент создаёт приватные ключи кошельков, поэтому к уязвимостям относимся серьёзно.
+This tool creates wallet private keys, so vulnerabilities are taken seriously.
 
-## Как сообщить об уязвимости
+## Reporting a vulnerability
 
-**Не создавайте публичный issue.** Используйте приватный отчёт: вкладка **Security** → **Report a vulnerability**
-в этом репозитории. Особенно важно всё, что касается генерации сидов (`derive_seed` в `cuda/vanity.cu`,
-случайная база из `std::random_device`) и того, куда попадают ключи.
+**Do not open a public issue.** Use a private report: the **Security** tab → **Report a vulnerability** in this
+repository. Anything about seed generation (`derive_seed` in `cuda/vanity.cu`, the random base from
+`std::random_device`) and about where keys end up matters most.
 
-**Do not open a public issue.** Use **Security → Report a vulnerability** on this repository.
+## Threat model (in short)
 
-## Модель угроз (кратко)
+- The seed of each key = `SHA-256(base ‖ counter)`; the base is 32 bytes from the system CSPRNG and changes every
+  ~2000 kernel launches. Leaking one key does not reveal the others.
+- Keys are written only to the local files `gems.jsonl` / `favorites.jsonl` (in `.gitignore`). Only the address goes to
+  the network (Telegram). Protecting these files on disk is up to the user.
+- Every saved key is re-checked with the official `@ton/ton` library.
+- The project has not been externally audited.
 
-- Сид каждого ключа = `SHA-256(база ‖ номер)`, база — 32 байта из системного криптогенератора, меняется каждые
-  ~2000 запусков ядра. Утечка одного ключа не раскрывает другие.
-- Ключи пишутся только в локальные файлы `gems.jsonl` / `favorites.jsonl` (в `.gitignore`). В сеть уходит только
-  адрес (Telegram). Защита этих файлов на диске — на стороне пользователя.
-- Каждый сохраняемый ключ перепроверяется официальной библиотекой `@ton/ton`.
-- Проект не проходил внешний аудит.
+## Known issues, fixed before publication
 
-## Известные исправленные проблемы (до публикации)
+1. An early version seeded `mt19937` from a 32-bit number, so keys could be brute-forced (the Profanity class of bug).
+2. The seed had the form `counter ‖ base`, so one leaked key let you recover its neighbours.
 
-1. Ранняя версия заводила генератор `mt19937` от 32-битного числа — ключи можно было перебрать (класс Profanity).
-2. Сид имел вид `номер ‖ база` — по одному утёкшему ключу восстанавливались соседние.
-
-Ключи, созданные сборками до первой публикации этого репозитория, не используйте для хранения средств.
+Do not use keys created by builds from before this repository was first published to hold funds.

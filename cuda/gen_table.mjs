@@ -1,5 +1,5 @@
-// Генерирует comb-таблицу для fixed-base ed25519 и ЭТАЛОН всей математики на bigint.
-// Если эталон совпадёт с noble для N случайных сидов — те же формулы переносим в CUDA.
+// Generates the comb table for fixed-base ed25519 and a bigint REFERENCE for all the math.
+// If the reference matches noble for N random seeds, we port the same formulas to CUDA.
 import { ed25519 } from '@noble/curves/ed25519.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const P = (1n << 255n) - 19n;
 const mod = (a) => ((a % P) + P) % P;
 const inv = (a) => {
-  // Ферма: a^(p-2)
+  // Fermat: a^(p-2)
   let r = 1n, b = mod(a), e = P - 2n;
   while (e > 0n) { if (e & 1n) r = mod(r * b); b = mod(b * b); e >>= 1n; }
   return r;
@@ -20,7 +20,7 @@ const d = mod(mod(-121665n) * inv(121666n));
 const Pt = ed25519.Point;
 const B = Pt.BASE;
 
-// --- comb-таблица: base[i][j] = (j+1) * 16^i * B, в виде precomp (y+x, y-x, 2dxy) ---
+// --- comb table: base[i][j] = (j+1) * 16^i * B, as precomp (y+x, y-x, 2dxy) ---
 const table = []; // [64][8] => {yplusx,yminusx,xy2d}
 for (let i = 0; i < 64; i++) {
   const row = [];
@@ -38,10 +38,10 @@ for (let i = 0; i < 64; i++) {
   table.push(row);
 }
 
-// --- bigint-эталон: ровно те формулы, что пойдут в CUDA ---
-// ge_p3: {X,Y,Z,T}; madd с precomp; затем p1p1->p3
+// --- bigint reference: exactly the formulas that go into CUDA ---
+// ge_p3: {X,Y,Z,T}; madd with precomp; then p1p1->p3
 function madd(p, q) {
-  // r = p + q, где q — precomp (yplusx,yminusx,xy2d), Z_q=1
+  // r = p + q, where q is precomp (yplusx,yminusx,xy2d), Z_q=1
   const YpX = mod(p.Y + p.X), YmX = mod(p.Y - p.X);
   const A = mod(YpX * q.yplusx);     // ref10: A=YpX*yplusx
   const Bb = mod(YmX * q.yminusx);   // B=YmX*yminusx
@@ -53,7 +53,7 @@ function madd(p, q) {
 }
 
 function scalarbaseComb(aBytes) {
-  // a как LE-целое, разбить на 64 ниббла, signed-convert в [-8,8]
+  // a as a LE integer, split into 64 nibbles, signed-convert to [-8,8]
   const e = new Array(64);
   for (let i = 0; i < 32; i++) { e[2 * i] = aBytes[i] & 15; e[2 * i + 1] = (aBytes[i] >> 4) & 15; }
   let carry = 0;
@@ -89,7 +89,7 @@ function scalarFromSeed(seed) {
   return a;
 }
 
-// --- проверка эталона против noble ---
+// --- check the reference against noble ---
 let ok = 0;
 const N = 200;
 for (let i = 0; i < N; i++) {
@@ -100,10 +100,10 @@ for (let i = 0; i < N; i++) {
   if (pub.equals(ref)) ok++;
   else if (ok === i) console.error('MISMATCH seed', seed.toString('hex'), '\n got', pub.toString('hex'), '\n exp', ref.toString('hex'));
 }
-console.log(`bigint-эталон comb vs noble: ${ok}/${N}`);
+console.log(`bigint reference comb vs noble: ${ok}/${N}`);
 if (ok !== N) process.exit(1);
 
-// --- экспорт таблицы в limbs 2^51 для CUDA ---
+// --- export the table as 2^51 limbs for CUDA ---
 function toLimbs51(n) {
   n = mod(n);
   const L = [];
@@ -123,6 +123,6 @@ for (let i = 0; i < 64; i++) {
   h += '}' + (i < 63 ? ',' : '') + '\n';
 }
 h += '};\n';
-// d2 = 2*d для возможной проверки
+// d2 = 2*d for a possible check
 fs.writeFileSync(path.join(__dirname, 'base_table.h'), h);
-console.log('base_table.h записан:', (h.length / 1024).toFixed(0), 'KB');
+console.log('base_table.h written:', (h.length / 1024).toFixed(0), 'KB');

@@ -1,5 +1,5 @@
-// Шаблоны версий кошелька в cuda/calib_multi.h (их использует ядро) дают те же адреса, что официальная @ton/ton.
-// Видеокарта не нужна: та же формула, что в addr_from_pub_v, повторена на JS.
+// The wallet-version templates in cuda/calib_multi.h (used by the kernel) give the same addresses as the official @ton/ton.
+// No GPU needed: the same formula as in addr_from_pub_v, repeated in JS.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -23,14 +23,14 @@ function addrHash(pub, v) {
   return sha256(Buffer.concat([Buffer.from(PREFIX[v]), dataHash]));
 }
 
-test('calib_multi.h: W5, V4R2, V3R2, V3R1 совпадают с @ton/ton', () => {
+test('calib_multi.h: W5, V4R2, V3R2, V3R1 match @ton/ton', () => {
   const names = Object.keys(VERSIONS);
   assert.equal(OFF.length, names.length);
   names.forEach((name, v) => {
     for (let t = 0; t < 50; t++) {
       const pub = crypto.randomBytes(32);
       const ref = VERSIONS[name].create({ workchain: 0, publicKey: pub }).address.hash;
-      assert.ok(addrHash(pub, v).equals(ref), `${name}: адрес не совпал`);
+      assert.ok(addrHash(pub, v).equals(ref), `${name}: address mismatch`);
     }
   });
 });

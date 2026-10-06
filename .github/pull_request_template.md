@@ -1,6 +1,6 @@
-## Что изменено
+## What changed
 
-## Проверка
-- [ ] `npm test` и `npm run smoke` проходят
-- [ ] если менялся `cuda/`: `npm run setup -- --force` проходит (selftest 20/20, 0 расхождений)
-- [ ] в коммитах нет ключей, сидов, `gems.jsonl`/`favorites.jsonl`, токена бота
+## Checks
+- [ ] `npm test` and `npm run smoke` pass
+- [ ] if `cuda/` changed: `npm run setup -- --force` passes (selftest 100/100, 0 mismatches)
+- [ ] no keys, seeds, `gems.jsonl`/`favorites.jsonl` or bot token in the commits

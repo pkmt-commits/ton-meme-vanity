@@ -1,18 +1,18 @@
-# ПРИВАТНЫЕ КЛЮЧИ — никогда не коммитить
+# PRIVATE KEYS — never commit
 gems.jsonl
 favorites.jsonl
 found.secret.jsonl
 hits*.txt
 *.secret.*
-# токен бота
+# bot token
 telegram.config.json
-# журналы и данные бота
+# bot logs and data
 data/taste/
 *.log
 *.pid
 cuda/*.out
 cuda/*.err
-# сборка
+# build
 cuda/vanity.exe
 cuda/vanity
 cuda/*.exp

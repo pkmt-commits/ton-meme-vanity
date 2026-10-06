@@ -1,5 +1,5 @@
-// Быстрый вывод адреса W5 (v5r1) из 32-байтного ed25519-сида.
-// Константы берутся из ref/calib.json (выведены и проверены против @ton/ton).
+// Fast derivation of a W5 (v5r1) address from a 32-byte ed25519 seed.
+// The constants are taken from ref/calib.json (derived and checked against @ton/ton).
 import crypto from 'node:crypto';
 import nacl from 'tweetnacl';
 import fs from 'node:fs';

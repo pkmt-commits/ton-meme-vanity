@@ -1,4 +1,4 @@
-// auto-generated из src/gems.mjs — словарь для GPU (бакеты по 1-й букве)
+// auto-generated from src/gems.mjs — dictionary for the GPU (buckets by the 1st letter)
 #define NW 7495
 #define WMAXL 9
 __device__ char DICT[NW][WMAXL] = {

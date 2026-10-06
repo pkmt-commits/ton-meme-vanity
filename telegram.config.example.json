@@ -1,5 +1,5 @@
 {
-  "_комментарий": "Скопируй этот файл в telegram.config.json и впиши свои значения. В Telegram уходит ТОЛЬКО адрес, без сида.",
-  "token": "123456789:AA...твой_токен_бота",
+  "_comment": "Copy this file to telegram.config.json and fill in your values. Only the address is sent to Telegram, never the seed.",
+  "token": "123456789:AA...your_bot_token",
   "chatId": "123456789"
 }

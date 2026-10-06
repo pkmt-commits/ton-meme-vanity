@@ -1,38 +1,38 @@
-name: Ошибка / Bug report
-description: Не собирается, не запускается или работает неправильно
+name: Bug report
+description: Doesn't build, doesn't run or works incorrectly
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        ⚠️ **Никогда не вставляйте сюда содержимое `gems.jsonl`, `favorites.jsonl`, `hits*.txt`, `telegram.config.json`
-        и строки `HIT ...` — там приватные ключи и токен.** Адреса (`UQ...`) показывать можно.
-        ⚠️ **Never paste `gems.jsonl`, `favorites.jsonl`, `hits*.txt`, `telegram.config.json` or `HIT ...` lines — they contain private keys.**
+        ⚠️ **Never paste the contents of `gems.jsonl`, `favorites.jsonl`, `hits*.txt`, `telegram.config.json`
+        or `HIT ...` lines here — they contain private keys and the bot token.** Addresses (`UQ...`) are fine to show.
+        Writing in Russian is fine too.
   - type: textarea
     id: what
     attributes:
-      label: Что случилось / What happened
-      description: Что делали, что ожидали, что получили.
+      label: What happened
+      description: What you did, what you expected, what you got.
     validations:
       required: true
   - type: textarea
     id: setup
     attributes:
-      label: Вывод `npm run setup` / Output of `npm run setup`
+      label: Output of `npm run setup`
       render: text
     validations:
       required: true
   - type: input
     id: gpu
     attributes:
-      label: Видеокарта и ОС / GPU and OS
+      label: GPU and OS
       placeholder: RTX 4070, Windows 11
     validations:
       required: true
   - type: checkboxes
     id: keys
     attributes:
-      label: Безопасность / Safety
+      label: Safety
       options:
-        - label: Я не вставил(а) сюда ключи, сиды и токен бота / I did not paste keys, seeds or bot token
+        - label: I did not paste keys, seeds or the bot token
           required: true
