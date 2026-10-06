@@ -1,7 +1,7 @@
 # Instructions for AI coding agents
 
-You are helping a user install and run **TON Vanity**: a GPU (CUDA) generator of "funny" TON wallet addresses.
-The user is probably not a developer. Talk to them in their language (the project docs are in Russian),
+You are helping a user install and run **TON Vanity**: a GPU (CUDA) generator of eye-catching, meme-worthy TON wallet addresses.
+The user is probably not a developer. Talk to them in their language (the docs are in English; there is a Russian README.ru.md),
 keep messages short, and do the work yourself instead of giving them instructions, except where noted below.
 
 ## Rule 0 — private keys (read before anything else)
@@ -27,25 +27,25 @@ npm run setup
 ```
 
 It is safe to run repeatedly. It checks Node.js, NVIDIA driver, CUDA Toolkit and (Windows) MSVC, detects
-the GPU architecture, compiles `cuda/vanity.cu`, then runs two self-checks. Success looks like:
+the GPU architecture, compiles `cuda/vanity.cu`, then runs three self-checks. Success looks like:
 
 ```
-  OK    selftest: 100/100 совпало с @ton/ton (W5, V4R2, V3R2, V3R1; с таблицей и без)
-  OK    сверка детектора: 0 расхождений
-  Готово.
+  OK    selftest: 100/100 match @ton/ton (W5, V4R2, V3R2, V3R1; with and without the table)
+  OK    detector check: 0 mismatches
+  Done. Next:
 ```
 
 If it prints `FAIL`, it also prints what to do. Typical fixes:
 
 | FAIL message | What to do |
 |---|---|
-| `Node.js ... нужна 20+` | Ask the user to install Node.js LTS (https://nodejs.org), open a new terminal. On Windows you may run `winget install OpenJS.NodeJS.LTS` if the user agrees. |
-| `видеокарта: nvidia-smi не найден` | No NVIDIA GPU or driver. A driver must be installed by the user (https://www.nvidia.com/drivers); without an NVIDIA GPU this project cannot run. |
-| `CUDA Toolkit: nvcc не найден` | User installs CUDA Toolkit (https://developer.nvidia.com/cuda-downloads, default options), then a NEW terminal, then `npm run setup` again. |
-| `компилятор C++ ... не найден` (Windows) | User installs "Build Tools for Visual Studio 2022" with "Desktop development with C++". With the user's consent: `winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`. |
-| `сборка ядра: ... unsupported Microsoft Visual Studio version` | The CUDA Toolkit does not support this MSVC version. Install the Visual Studio version listed in the CUDA release notes (usually 2022). |
-| `сборка ядра: ... unsupported gpu architecture` | CUDA Toolkit too old or too new for this GPU. Install a matching CUDA Toolkit. |
-| `самопроверка` or `сверка детектора` failed | Run `npm run setup -- --force`. If it still fails, STOP: the build computes wrong addresses, do not use it. Tell the user to open an issue with the output. |
+| `Node.js: version ..., 20+ required` | Ask the user to install Node.js LTS (https://nodejs.org), open a new terminal. On Windows you may run `winget install OpenJS.NodeJS.LTS` if the user agrees. |
+| `GPU: nvidia-smi not found or not responding` | No NVIDIA GPU or driver. A driver must be installed by the user (https://www.nvidia.com/drivers); without an NVIDIA GPU this project cannot run. |
+| `CUDA Toolkit: nvcc compiler not found` | User installs CUDA Toolkit (https://developer.nvidia.com/cuda-downloads, default options), then a NEW terminal, then `npm run setup` again. |
+| `C++ compiler: Visual Studio Build Tools (MSVC) not found` (Windows) | User installs "Build Tools for Visual Studio 2022" with "Desktop development with C++". With the user's consent: `winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`. |
+| `kernel build: ... unsupported Microsoft Visual Studio version` | The CUDA Toolkit does not support this MSVC version. Install the Visual Studio version listed in the CUDA release notes (usually 2022). |
+| `kernel build: ... unsupported gpu architecture` | CUDA Toolkit too old or too new for this GPU. Install a matching CUDA Toolkit. |
+| `self-test`, `v5-lite sieve check` or `detector check` failed | Run `npm run setup -- --force`. If it still fails, STOP: the build computes wrong addresses, do not use it. Tell the user to open an issue with the output. |
 
 Installing software (drivers, CUDA, Visual Studio, Node) is the user's decision: ask before running installers.
 
@@ -62,9 +62,9 @@ redirect output and read the last ~30 lines of the log, for example:
 node src/run_cuda.mjs > run.log 2> run.err
 ```
 
-On the dashboard, check: `Скорость` (speed) is non-zero, `Темп. GPU` stays near the target (80°C by default),
-and there is no `расхождений` (mismatches) line with a non-zero number. Useful flags: `--max-temp 75`
-(cooler and quieter), `--per-hour 6` (fewer Telegram messages). All flags are in README.md, "Параметры охоты".
+On the dashboard, check: `Speed` is non-zero, `GPU temp` stays near the target (80°C by default),
+and there is no `mismatches` count with a non-zero number. Useful flags: `--max-temp 75`
+(cooler and quieter), `--per-hour 6` (fewer Telegram messages). All flags are in README.md, "Hunt options".
 
 ## Step 3 — show results (safely)
 
@@ -84,18 +84,18 @@ The user must create a bot with @BotFather and send the bot any message. Then:
 
 If Telegram is blocked in the user's country, set `HTTPS_PROXY` (or enable a system proxy on Windows).
 
-## Optional — exact suffix instead of funny addresses
+## Optional — exact suffix instead of meme addresses
 
 ```
 node scripts/kernel.mjs --suffix _durov > hits.txt    # hits.txt contains KEYS (Rule 0)
 node src/check_hits.mjs hits.txt                       # verifies each hit, prints only addresses
 ```
 
-Rough cost: each extra letter is ~32x more attempts (see README.md, "Сколько это стоит по времени").
+Rough cost: each extra letter is ~32x more attempts (see README.md, "How long it takes").
 
 ## Optional — importing a found wallet
 
-Follow README.md, "Как завести найденный кошелёк" (MyTonWallet, import by `seedHex`). Remind the user to compare
+Follow README.md, "Importing a found wallet" (MyTonWallet, import by `seedHex`). Remind the user to compare
 the imported address with the found address character by character before sending any money.
 
 ## Do not

@@ -1,6 +1,6 @@
-// Шаблоны data-ячеек четырёх версий кошелька (W5, V4R2, V3R2, V3R1) для ядра → cuda/calib_multi.h.
-// Адрес = SHA-256(StateInit), StateInit = код (фиксирован) + data(seqno, wallet_id, pubkey, …). Из официальной @ton/ton
-// берём биты data при нулевом ключе, смещение ключа и префикс StateInit; затем сверяем на случайных ключах.
+// Data-cell templates of the four wallet versions (W5, V4R2, V3R2, V3R1) for the kernel → cuda/calib_multi.h.
+// Address = SHA-256(StateInit), StateInit = code (fixed) + data(seqno, wallet_id, pubkey, …). From the official @ton/ton
+// we take the data bits for a zero key, the key offset and the StateInit prefix; then we cross-check on random keys.
 //   node cuda/gen_calib_multi.mjs
 import { WalletContractV5R1, WalletContractV4, WalletContractV3R2, WalletContractV3R1 } from '@ton/ton';
 import { beginCell, storeStateInit } from '@ton/core';
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 const out = path.join(path.dirname(fileURLToPath(import.meta.url)), 'calib_multi.h');
 const sha256 = (b) => crypto.createHash('sha256').update(b).digest();
 const d2of = (n) => (n >> 3) * 2 + ((n & 7) ? 1 : 0);
-function repBytes(bs) {   // байты ячейки с тегом дополнения (если длина не кратна 8)
+function repBytes(bs) {   // cell bytes with the completion tag (if the length is not a multiple of 8)
   const n = bs.length, o = Buffer.alloc(Math.ceil(n / 8));
   for (let i = 0; i < n; i++) if (bs.at(i)) o[i >> 3] |= 1 << (7 - (i & 7));
   if (n & 7) o[n >> 3] |= 1 << (7 - (n & 7));
@@ -31,19 +31,19 @@ for (const [name, C] of VERS) {
   const code = si.refs[0], data = si.refs[1];
   const prefix = Buffer.concat([Buffer.from([si.refs.length, d2of(si.bits.length)]), repBytes(si.bits),
     Buffer.from([(code.depth() >> 8) & 255, code.depth() & 255, (data.depth() >> 8) & 255, data.depth() & 255]), code.hash()]);
-  if (prefix.length !== 39) throw new Error(`${name}: префикс ${prefix.length} байт, ядро ждёт 39`);
+  if (prefix.length !== 39) throw new Error(`${name}: prefix is ${prefix.length} bytes, the kernel expects 39`);
   for (let t = 0; t < 200; t++) {
     const pub = crypto.randomBytes(32), aug = Buffer.from(tpl);
     let bit = off;
     for (let i = 0; i < 32; i++) for (let k = 7; k >= 0; k--) { const bi = bit >> 3, sh = 7 - (bit & 7); if ((pub[i] >> k) & 1) aug[bi] |= 1 << sh; else aug[bi] &= ~(1 << sh); bit++; }
     const h = sha256(Buffer.concat([prefix, sha256(Buffer.concat([Buffer.from([0, d2of(bits.length)]), aug]))]));
-    if (!h.equals(mk(pub).address.hash)) throw new Error(`${name}: сверка с @ton/ton не прошла`);
+    if (!h.equals(mk(pub).address.hash)) throw new Error(`${name}: check against @ton/ton failed`);
   }
   rows.push({ name, off, d2: d2of(bits.length), tpl: [...tpl], prefix: [...prefix] });
-  console.log(`${name}: data ${bits.length} бит, ключ с бита ${off} — OK`);
+  console.log(`${name}: data ${bits.length} bits, key at bit ${off} — OK`);
 }
 const TL = Math.max(...rows.map((r) => r.tpl.length));
-let h = `// auto-generated cuda/gen_calib_multi.mjs: ${rows.map((r) => r.name).join(', ')} (сверено с @ton/ton)\n`;
+let h = `// auto-generated cuda/gen_calib_multi.mjs: ${rows.map((r) => r.name).join(', ')} (checked against @ton/ton)\n`;
 h += `#define TPL_MAX ${TL}\n`;
 h += `__device__ __constant__ int V_OFF[${rows.length}] = {${rows.map((r) => r.off)}};\n`;
 h += `__device__ __constant__ int V_D2[${rows.length}] = {${rows.map((r) => r.d2)}};\n`;

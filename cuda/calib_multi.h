@@ -1,4 +1,4 @@
-// auto-generated cuda/gen_calib_multi.mjs: W5, V4R2, V3R2, V3R1 (сверено с @ton/ton)
+// auto-generated cuda/gen_calib_multi.mjs: W5, V4R2, V3R2, V3R1 (checked against @ton/ton)
 #define TPL_MAX 41
 __device__ __constant__ int V_OFF[4] = {65,64,64,64};
 __device__ __constant__ int V_D2[4] = {81,81,80,80};

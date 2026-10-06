@@ -24,10 +24,10 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run smoke
-      - name: docs/index.html (Красота TON-адреса) собран из текущих исходников
-        run: node scripts/build-checker.mjs && git diff --exit-code docs/index.html
-      - name: docs/generate.html (генератор в браузере) собран из текущих исходников
-        run: node scripts/build-generator.mjs && git diff --exit-code docs/generate.html
+      - name: docs/index.html and docs/ru/index.html (address checker) are built from the current sources
+        run: node scripts/build-checker.mjs && git status --porcelain -- docs/index.html docs/ru/index.html && test -z "$(git status --porcelain -- docs/index.html docs/ru/index.html)"
+      - name: docs/generate.html and docs/ru/generate.html (browser generator) are built from the current sources
+        run: node scripts/build-generator.mjs && git status --porcelain -- docs/generate.html docs/ru/generate.html && test -z "$(git status --porcelain -- docs/generate.html docs/ru/generate.html)"
 
   cuda-build:
     name: CUDA kernel compiles (Linux, no GPU)

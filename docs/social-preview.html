@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- Превью репозитория (docs/social-preview.png). Пересобрать: msedge --headless=new --window-size=1280,640 --virtual-time-budget=8000 --screenshot=social-preview.png social-preview.html -->
+<!-- Repository preview (docs/social-preview.png). To re-render: msedge --headless=new --window-size=1280,640 --virtual-time-budget=8000 --screenshot=social-preview.png social-preview.html -->
 <html>
 <head>
 <meta charset="utf-8">
@@ -25,7 +25,7 @@
       radial-gradient(ellipse 90% 80% at 50% 120%, rgba(0, 152, 234, 0.18), transparent 70%),
       linear-gradient(160deg, var(--bg1), var(--bg0) 60%);
   }
-  /* фон: строки «случайных» адресов */
+  /* background: rows of "random" addresses */
   #noise {
     position: absolute; inset: -40px;
     font-family: 'JetBrains Mono', monospace; font-size: 17px; line-height: 27px;
@@ -81,7 +81,7 @@
   <div class="tag">funny TON wallet addresses · <i>GPU</i></div>
 </div>
 <script>
-  // детерминированный ГПСЧ — картинка воспроизводима
+  // a deterministic PRNG keeps the image reproducible
   let s = 20261004;
   const rnd = () => (s = (s * 1103515245 + 12345) % 2147483648) / 2147483648;
   const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
@@ -93,11 +93,11 @@
     lines.push(row);
   }
   document.getElementById('noise').textContent = lines.join('\n');
-  // адрес-пример (выдуманный, 48 символов): начало UQDurov + хвост-фраза
+  // an example address (made up, 48 characters): a UQDurov start + an ending phrase
   const tail = '_to_the_MOON';
   const mid = randStr(48 - 7 - tail.length);
   const full = 'UQDurov' + mid + tail;
-  if (full.length !== 48) throw new Error('длина ' + full.length);
+  if (full.length !== 48) throw new Error('length ' + full.length);
   document.getElementById('addr').innerHTML = '<b>UQDurov</b>' + mid + '<span class="end">' + tail + '</span>';
 </script>
 </body>

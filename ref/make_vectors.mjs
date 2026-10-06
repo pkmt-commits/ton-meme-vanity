@@ -1,5 +1,5 @@
-// Эталонные тест-векторы из официальных библиотек @ton/*.
-// Используются только для проверки нашей реализации; реальные кошельки отсюда не берём.
+// Reference test vectors from the official @ton/* libraries.
+// Used only to check our implementation; never use wallets from here as real ones.
 import { mnemonicNew, mnemonicToPrivateKey, mnemonicValidate } from '@ton/crypto';
 import { WalletContractV5R1 } from '@ton/ton';
 import { beginCell } from '@ton/core';
@@ -32,7 +32,7 @@ for (let i = 0; i < N; i++) {
   });
 }
 
-// Случайные (в основном невалидные) мнемоники — для проверки фильтра 1/256
+// Random (mostly invalid) mnemonics — to check the 1/256 filter
 const { wordlist } = await import('@ton/crypto/dist/mnemonic/wordlist.js');
 for (let i = 0; i < 2000; i++) {
   const words = Array.from({ length: 24 }, () => wordlist[crypto.randomInt(2048)]);

@@ -1,4 +1,4 @@
-// Генерирует точные константы SHA-256/512 (корни простых) и самопроверяет против Node crypto.
+// Generates the exact SHA-256/512 constants (roots of primes) and self-checks them against Node crypto.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,7 +10,7 @@ function primes(n) {
   while (out.length < n) { let p = true; for (let i = 2; i * i <= c; i++) if (c % i === 0) { p = false; break; } if (p) out.push(c); c++; }
   return out;
 }
-// целочисленный n-й корень (floor) для BigInt
+// integer n-th root (floor) for BigInt
 function iroot(x, k) {
   if (x < 0n) throw 0; if (x === 0n) return 0n;
   let hi = 1n; while (hi ** BigInt(k) <= x) hi <<= 1n;
@@ -18,7 +18,7 @@ function iroot(x, k) {
   while (lo < hi) { const mid = (lo + hi + 1n) >> 1n; if (mid ** BigInt(k) <= x) lo = mid; else hi = mid - 1n; }
   return lo;
 }
-// первые n бит дробной части p^(1/root)
+// the first n bits of the fractional part of p^(1/root)
 const fracBits = (p, root, nbits) => iroot(BigInt(p) << BigInt(root * nbits), root) & ((1n << BigInt(nbits)) - 1n);
 
 const P8 = primes(8), P80 = primes(80);
@@ -27,7 +27,7 @@ const SHA256_K = P80.slice(0, 64).map((p) => fracBits(p, 3, 32));
 const SHA512_H = P8.map((p) => fracBits(p, 2, 64));
 const SHA512_K = P80.map((p) => fracBits(p, 3, 64));
 
-// --- самопроверка: sha256/sha512 на этих константах == Node ---
+// --- self-check: sha256/sha512 built on these constants == Node ---
 function sha256js(msg) {
   const H = SHA256_H.map(Number);
   const K = SHA256_K.map(Number);
@@ -66,14 +66,14 @@ const ref256 = crypto.createHash('sha256').update(Buffer.from(testMsg)).digest('
 const got256 = sha256js(testMsg).toString('hex');
 console.log('SHA256 self-check:', got256 === ref256 ? 'OK' : `FAIL got ${got256} exp ${ref256}`);
 
-// sha512 только через константы H[0]/K[0] sanity (полную реализацию на bigint пропустим — её проверит 20-векторный гейт в CUDA)
-console.log('SHA512_K[0]=0x' + SHA512_K[0].toString(16), 'ожид 428a2f98d728ae22:', SHA512_K[0] === 0x428a2f98d728ae22n);
-console.log('SHA512_H[0]=0x' + SHA512_H[0].toString(16), 'ожид 6a09e667f3bcc908:', SHA512_H[0] === 0x6a09e667f3bcc908n);
-console.log('SHA256_K[0]=0x' + SHA256_K[0].toString(16), 'ожид 428a2f98:', SHA256_K[0] === 0x428a2f98n);
-console.log('SHA256_H[0]=0x' + SHA256_H[0].toString(16), 'ожид 6a09e667:', SHA256_H[0] === 0x6a09e667n);
+// sha512 only as a sanity check of the H[0]/K[0] constants (we skip the full bigint implementation — the 20-vector gate in CUDA will check it)
+console.log('SHA512_K[0]=0x' + SHA512_K[0].toString(16), 'expected 428a2f98d728ae22:', SHA512_K[0] === 0x428a2f98d728ae22n);
+console.log('SHA512_H[0]=0x' + SHA512_H[0].toString(16), 'expected 6a09e667f3bcc908:', SHA512_H[0] === 0x6a09e667f3bcc908n);
+console.log('SHA256_K[0]=0x' + SHA256_K[0].toString(16), 'expected 428a2f98:', SHA256_K[0] === 0x428a2f98n);
+console.log('SHA256_H[0]=0x' + SHA256_H[0].toString(16), 'expected 6a09e667:', SHA256_H[0] === 0x6a09e667n);
 if (got256 !== ref256) process.exit(1);
 
-// --- экспорт ---
+// --- export ---
 const u64arr = (name, arr) => `__device__ __constant__ unsigned long long ${name} = {\n  ` +
   arr.map((v) => '0x' + v.toString(16) + 'ULL').join(', ') + '\n};\n';
 const u32arr = (name, arr) => `__device__ __constant__ unsigned int ${name} = {\n  ` +
@@ -84,4 +84,4 @@ h += u32arr('SHA256_K[64]', SHA256_K);
 h += u64arr('SHA512_H[8]', SHA512_H);
 h += u64arr('SHA512_K[80]', SHA512_K);
 fs.writeFileSync(path.join(__dirname, 'sha_const.h'), h);
-console.log('sha_const.h записан');
+console.log('sha_const.h written');

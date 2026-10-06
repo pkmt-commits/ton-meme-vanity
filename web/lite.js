@@ -1,8 +1,8 @@
-// Быстрый предфильтр оценки v5 для браузера — перенос сита v5-lite из CUDA (cuda/v5lite.inc): разбор хвоста «толкающим»
-// способом по обратному индексу словаря (слова, кончающиеся в разобранном месте). Точная scoreV5 стоит ~50 мкс на адрес,
-// предфильтр — единицы мкс; точно оцениваются только прошедшие. makeLite(v5) → bits(uq) — приближённые биты хвоста
-// (≥ 0) или Infinity, если у адреса есть узор/растяжка (их пусть оценит точная функция).
-// v5 = { Z, THEME, VOTES, FUNC2, P5, SLANG_SET } — внутренности score_v5 (вшиваются при сборке страницы).
+// Fast prefilter for the v5 score in the browser — a port of the v5-lite sieve from CUDA (cuda/v5lite.inc): the tail is parsed
+// in "push" style over a reverse index of the dictionary (words that end at the position just parsed). The exact scoreV5 costs ~50 µs
+// per address, the prefilter a few µs; only the addresses that pass are scored exactly. makeLite(v5) → bits(uq) — approximate tail
+// bits (≥ 0), or Infinity if the address has a pattern or stretched letters (leave those to the exact function).
+// v5 = { Z, THEME, VOTES, FUNC2, P5, SLANG_SET } — internals of score_v5 (inlined when the page is built).
 function makeLite(v5) {
   const { Z, THEME, VOTES, FUNC2, P5, SLANG_SET } = v5;
   const words = [], base = [], bonus = [], flags = [];
@@ -18,7 +18,7 @@ function makeLite(v5) {
   const NW = words.length;
   const kc = (c) => { const x = c.charCodeAt(0); if (x >= 97 && x <= 122) return x - 97; if (x >= 48 && x <= 57) return 26 + x - 48; if (c === '_') return 36; return 37; };
   const KS = 38, SUB = 40, KT = 38 * 39;
-  // обратный индекс по трём последним пробежкам; два: буквенные слова (по leet-строке) и с цифрами (по обычной)
+  // reverse index by the last three runs; two indexes: alphabetic words (matched on the leet-decoded string) and words with digits (on the plain one)
   function buildRev(alphaType) {
     const key = new Int32Array(NW).fill(-1), cnt = new Int32Array(KT * SUB + 1);
     for (let w = 0; w < NW; w++) {
@@ -58,7 +58,7 @@ function makeLite(v5) {
   const sg = new Float64Array(47), snw = new Int32Array(47), sfl = new Int32Array(47);
   return function bits(uq) {
     const b = uq.slice(2), n = 46;
-    // узоры и растяжки — сразу к точной оценке (редкость)
+    // patterns and stretched letters go straight to the exact score (rarity)
     let run = 1, rb = 1, seps = 0; for (let i = 0; i < n; i++) { if (isSep(b[i])) seps++; if (i && b[i] === b[i - 1]) { if (++run > rb) rb = run; } else run = 1; }
     if (rb >= 4 || seps >= 7) return Infinity;
     const low = b.toLowerCase(), lt = low.replace(/[0134578]/g, (d) => LEET[d]);
@@ -75,7 +75,7 @@ function makeLite(v5) {
         const lists = [[c2 < 38 ? R.S[ka + c2] : 0, c2 < 38 ? R.S[ka + c2 + 1] : 0], [R.S[ka + 39], R.S[ka + 40]], [R.S[kb], R.S[kb + 1]]];
         for (const [x0, x1] of lists) for (let x = x0; x < x1; x++) {
           const w = R.I[x], wd = words[w], L = wd.length;
-          // совпадение слова, кончающегося в e: последняя/внутренние пробежки целиком, первая — частично
+          // match of a word ending at e: the last/inner runs must match in full, the first run only partially
           let p = e - 1, k = L - 1, iMin = -1, iMax = -1;
           while (k >= 0) { const c = wd[k]; let need = 0; while (k >= 0 && wd[k] === c) { need++; k--; }
             let cnt = 0; while (p >= 0 && X[p] === c) { cnt++; p--; }

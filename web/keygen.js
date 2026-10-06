@@ -1,25 +1,25 @@
-// Быстрая генерация ключей ed25519 в браузере (и в Node для проверки) на низкоуровневых функциях tweetnacl.
-// Тот же приём, что в CUDA-ядре: таблица кратных базовой точки с окном 8 бит в аффинной форме (y+x, y−x, 2dxy) —
-// 32 смешанных сложения (по 7 умножений) на ключ вместо полного умножения, и одно обращение в поле на пачку ключей
-// (трюк Монтгомери). Ключ — обычный 32-байтный сид ed25519: pubkey = зажатые SHA-512(seed)[0..32] · B, как у
-// @ton/crypto keyPairFromSeed, поэтому кошелёк импортируется по сиду.
-// Подключается как обычный скрипт после nacl-fast.js: определяет глобальный makeKeygen(nacl).
+// Fast ed25519 key generation in the browser (and in Node for testing), built on tweetnacl's low-level functions.
+// Same trick as in the CUDA kernel: a table of multiples of the base point with an 8-bit window in affine form (y+x, y−x, 2dxy) —
+// 32 mixed additions (7 multiplications each) per key instead of a full scalar multiplication, and one field inversion per batch of keys
+// (Montgomery's trick). A key is a plain 32-byte ed25519 seed: pubkey = clamped SHA-512(seed)[0..32] · B, as in
+// @ton/crypto keyPairFromSeed, so the wallet can be imported by its seed.
+// Loaded as a plain script after nacl-fast.js: defines the global makeKeygen(nacl).
 function makeKeygen(nacl) {
   const L = nacl.lowlevel;
   const gf = L.gf, M = L.M, A = L.A, S = L.S, Z = L.Z, add = L.add, set25519 = L.set25519, pack25519 = L.pack25519;
   const gf0 = gf(), gf1 = gf([1]);
   const cp = (p) => [gf(p[0]), gf(p[1]), gf(p[2]), gf(p[3])];
   const D2 = gf(); A(D2, L.D, L.D);
-  function inv(o, z) {   // z^(p-2), как inv25519 в tweetnacl
+  function inv(o, z) {   // z^(p-2), like inv25519 in tweetnacl
     const c = gf(z);
     for (let a = 253; a >= 0; a--) { S(c, c); if (a !== 2 && a !== 4) M(c, c, z); }
     set25519(o, c);
   }
-  // базовая точка B (константы tweetnacl)
+  // base point B (tweetnacl constants)
   const X = gf([0xd51a, 0x8f25, 0x2d60, 0xc956, 0xa7b2, 0x9525, 0xc760, 0x692c, 0xdc5c, 0xfdd6, 0xe231, 0xc0a4, 0x53fe, 0xcd6e, 0x36d3, 0x2169]);
   const Y = gf([0x6658, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666, 0x6666]);
   const B = [gf(X), gf(Y), gf(gf1), gf()]; M(B[3], X, Y);
-  // таблица (проективная) → аффинная форма Нильса одним обращением на всю таблицу
+  // table (projective) → affine Niels form with a single inversion for the whole table
   const proj = []; let base = cp(B);
   for (let i = 0; i < 32; i++) {
     const cur = cp(base);
@@ -38,7 +38,7 @@ function makeKeygen(nacl) {
     const ypx = gf(), ymx = gf(), xy2d = gf(); A(ypx, y, x); Z(ymx, y, x); M(xy2d, x, y); M(xy2d, xy2d, D2);
     TQ[k] = [ypx, ymx, xy2d];
   }
-  // смешанное сложение p += q (q аффинная Нильса); neg — вычесть q. Временные массивы — заранее
+  // mixed addition p += q (q is affine Niels); neg — subtract q. Scratch arrays are allocated up front
   const YpX = gf(), YmX = gf(), qa = gf(), qb = gf(), qc = gf(), qd = gf(), rX = gf(), rY = gf(), rZ = gf(), rT = gf(), nq = gf();
   function madd(p, q, neg) {
     A(YpX, p[1], p[0]); Z(YmX, p[1], p[0]);
@@ -51,7 +51,7 @@ function makeKeygen(nacl) {
   const h = new Uint8Array(64), e = new Int16Array(32), tmpB = new Uint8Array(32);
   let P = [], Zp = [];
   const zi = gf(), x = gf(), y = gf(), t = gf();
-  // n сидов (Uint8Array(32·n)) → n публичных ключей (Uint8Array(32·n))
+  // n seeds (Uint8Array(32·n)) → n public keys (Uint8Array(32·n))
   return function pubkeys(seeds, n) {
     while (P.length < n) { P.push([gf(), gf(), gf(), gf()]); Zp.push(gf()); }
     const out = new Uint8Array(32 * n);
@@ -60,7 +60,7 @@ function makeKeygen(nacl) {
       h[0] &= 248; h[31] &= 127; h[31] |= 64;
       let carry = 0;
       for (let i = 0; i < 31; i++) { const v = h[i] + carry; carry = (v + 128) >> 8; e[i] = v - (carry << 8); }
-      e[31] = h[31] + carry;   // старшая цифра 64..128 (после зажима), без переноса дальше: в таблице есть 128·256^31·B
+      e[31] = h[31] + carry;   // top digit is 64..128 (after clamping), no carry beyond it: the table contains 128·256^31·B
       const p = P[k]; set25519(p[0], gf0); set25519(p[1], gf1); set25519(p[2], gf1); set25519(p[3], gf0);
       for (let i = 0; i < 32; i++) { const d = e[i]; if (d > 0) madd(p, TQ[128 * i + d - 1], false); else if (d < 0) madd(p, TQ[128 * i - d - 1], true); }
       if (k) M(Zp[k], Zp[k - 1], p[2]); else set25519(Zp[0], p[2]);

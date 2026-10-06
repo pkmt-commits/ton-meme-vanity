@@ -1,8 +1,7 @@
-<title>Красота TON-адреса</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&family=Unbounded:wght@700;800&display=swap">
 <style>
-/* Табло-прибор: одна карточка. Адрес моноширинным, найденные слова подсвечены маркером; шкала редкости в битах */
+/* A gauge-like card: the address in monospace, found words highlighted with a marker; a rarity scale in bits */
 :root{
   --bg:#eef1f5; --card:#ffffff; --fg:#141922; --muted:#5d6878; --line:#d9dfe8;
   --accent:#0f6fde; --mark:#ffe36e; --mark-fg:#1a1500; --uq:#9aa4b2; --good:#127a46; --soft:#e7effa;
@@ -51,29 +50,31 @@ dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0;font-size:1
 dt{font:700 13px var(--mono);color:var(--accent)}
 dd{margin:0;color:var(--fg)}
 a{color:var(--accent)}
+.lang{justify-self:end;font-size:14px;margin:0}
 @media (max-width:480px){ .result{grid-template-columns:1fr} .score{justify-self:start;grid-auto-flow:column;align-items:baseline;gap:8px} }
 @media (prefers-reduced-motion:no-preference){ .pin{transition:left .35s ease} }
 </style>
 
 <div class="wrap">
   <header style="display:grid;gap:8px">
-    <h1>Красота TON-адреса</h1>
-    <p class="sub">Вставь адрес кошелька — покажу, какие слова и узоры в нём прячутся, насколько он интересный, красивый и мемный и как редко такое выпадает случайно. Адрес никуда не отправляется: всё считается в этой вкладке.</p>
+    <p class="lang">{{lang}}</p>
+    <h1>{{h1}}</h1>
+    <p class="sub">{{sub}}</p>
   </header>
 
   <form class="card" id="f" autocomplete="off">
-    <label for="a">TON-адрес (48 символов, вид UQ… или EQ…)</label>
+    <label for="a">{{addrLabel}}</label>
     <div class="inrow">
       <input id="a" name="a" spellcheck="false" placeholder="UQ…" value="UQC5PS0DCjuLHTFvAy-2WB3TfV5utOrqSHWmBNxY3ah2goaT">
-      <button class="primary" type="submit">Оценить</button>
-      <button type="button" id="rnd">Случайный</button>
+      <button class="primary" type="submit">{{btnCheck}}</button>
+      <button type="button" id="rnd">{{btnRandom}}</button>
     </div>
     <p class="err" id="err" hidden></p>
   </form>
 
   <section class="card" id="out" aria-live="polite">
     <div class="result">
-      <div class="score"><b id="sc">0</b><span>очков</span></div>
+      <div class="score"><b id="sc">0</b><span>{{points}}</span></div>
       <div class="verdict"><h2 id="vt"></h2><p class="rare" id="rr"></p></div>
     </div>
     <div class="addr" id="ad"></div>
@@ -86,29 +87,29 @@ a{color:var(--accent)}
   </section>
 
   <section class="card">
-    <h2 style="font:700 17px/1.3 var(--body);margin:0">Поиск прямо в браузере</h2>
-    <p class="small">За 10 секунд вкладка переберёт пару сотен тысяч случайных адресов и покажет самый интересный. У этих адресов нет ключей — это только демонстрация. Генератор на видеокарте проверяет десятки миллионов адресов в секунду, уже с настоящими ключами.</p>
-    <div class="inrow"><button type="button" id="hunt">Искать 10 секунд</button></div>
+    <h2 style="font:700 17px/1.3 var(--body);margin:0">{{huntTitle}}</h2>
+    <p class="small">{{huntText}}</p>
+    <div class="inrow"><button type="button" id="hunt">{{huntBtn}}</button></div>
     <p class="small" id="hs" aria-live="polite"></p>
   </section>
 
   <section class="card">
-    <h2 style="font:700 17px/1.3 var(--body);margin:0">Примеры</h2>
-    <p class="small">Адреса из тестового прогона генератора; ключи от них уничтожены — не отправляйте на них деньги.</p>
+    <h2 style="font:700 17px/1.3 var(--body);margin:0">{{exTitle}}</h2>
+    <p class="small">{{exText}}</p>
     <div class="ex" id="ex"></div>
   </section>
 
   <section class="card">
-    <h2 style="font:700 17px/1.3 var(--body);margin:0">Как считается</h2>
-    <p class="small">Адрес разбивается на слова по частотному словарю английского (wordfreq). Каждый символ случайного адреса — это 5 бит шума; слово «экономит» биты, если оно короче, чем стоит по частоте. Бонусы — за обособленность (разделители, контраст регистра), фразу в конце, слово сразу после UQ, растяжки, смайлы и мем-числа. Очки = биты × 10, поэтому <b>+10 очков ≈ вдвое реже</b>.</p>
+    <h2 style="font:700 17px/1.3 var(--body);margin:0">{{howTitle}}</h2>
+    <p class="small">{{howText}}</p>
     <dl>
-      <dt>T1</dt><dd>одно слово плюс редкость (растяжка, повторы)</dd>
-      <dt>T2</dt><dd>пара слов на конце</dd>
-      <dt>T3</dt><dd>три слова и больше</dd>
-      <dt>TS</dt><dd>слово сразу после UQ плюс конец</dd>
-      <dt>TM</dt><dd>растянутое слово где угодно</dd>
+      <dt>T1</dt><dd>{{t1}}</dd>
+      <dt>T2</dt><dd>{{t2}}</dd>
+      <dt>T3</dt><dd>{{t3}}</dd>
+      <dt>TS</dt><dd>{{ts}}</dd>
+      <dt>TM</dt><dd>{{tm}}</dd>
     </dl>
-    <p class="small">Вкус настроен под автора: крипто-сленг, мемы, мат на английском и в транслите. Редкость посчитана по 2 млн случайных адресов и сотням миллиардов адресов, проверенных генератором <a href="https://github.com/pkmt-commits/ton-meme-vanity">ton-meme-vanity</a> — там же можно искать свой красивый адрес на видеокарте.</p>
+    <p class="small">{{taste}}</p>
   </section>
 </div>
 
@@ -116,7 +117,10 @@ a{color:var(--accent)}
 <script>
 (function(){
   const $ = (id) => document.getElementById(id);
-  // Редкость: доля адресов со score ≥ s. Ниже 150 — выборка 2 млн случайных адресов, выше — данные генератора.
+  const T = /*T*/null;
+  const RR = T.reasons.map(([p, r]) => [new RegExp(p), r]);
+  const tr = (s) => s.split(', ').map((x) => RR.reduce((a, [p, r]) => a.replace(p, r), x)).join(', ');
+  // Rarity: the share of addresses with score ≥ s. Below 150: a sample of 2 million random addresses, above: generator data.
   const LOW = {"20":2210,"40":4415,"60":10582,"80":23529,"100":74074,"120":200000};
   const HIGH = {"150":2296028,"160":3796484,"170":6522239,"180":11379409,"190":20622054,"200":36895640,"210":71392808,"220":137279255,"230":266067010,"240":477935185,"250":955870370,"260":1911740741,"280":3686928571,"300":17205666667};
   function oneIn(s){
@@ -125,7 +129,7 @@ a{color:var(--accent)}
       let lo = hk[0];
       for (const k of hk) if (k <= s && HIGH[k]) lo = k;
       const base = HIGH[lo];
-      return base * Math.pow(2, (s - lo) / 10);   // +10 очков ≈ ×2
+      return base * Math.pow(2, (s - lo) / 10);   // +10 points ≈ ×2
     }
     const lk = Object.keys(LOW).map(Number).sort((a,b)=>a-b);
     let lo = lk[0];
@@ -135,42 +139,36 @@ a{color:var(--accent)}
     return Math.exp(a + (b - a) * (s - lo) / (hi - lo));
   }
   function fmtN(n){
-    if (n < 1.5) return 'почти у каждого';
-    const u = [[1e12,'трлн'],[1e9,'млрд'],[1e6,'млн'],[1e3,'тыс.']];
-    for (const [v,w] of u) if (n >= v) { const x = n / v; return '1 из ' + (x >= 100 ? Math.round(x) : x.toFixed(x >= 10 ? 0 : 1)).toString().replace('.', ',') + ' ' + w; }
-    return '1 из ' + Math.round(n);
+    if (n < 1.5) return T.almostAll;
+    for (const [v,w] of T.units) if (n >= v) { const x = n / v; return T.oneIn + (x >= 100 ? Math.round(x) : x.toFixed(x >= 10 ? 0 : 1)).toString().replace('.', T.dec) + ' ' + w; }
+    return T.oneIn + Math.round(n);
   }
   function verdict(s){
-    if (s >= 300) return 'Легендарный адрес — в такое не верят';
-    if (s >= 250) return 'Исключительный адрес';
-    if (s >= 200) return 'Очень красивый и редкий';
-    if (s >= 150) return 'Красивый, мемный адрес';
-    if (s >= 100) return 'Есть на что посмотреть';
-    if (s >= 50) return 'Почти обычный';
-    return 'Обычный случайный адрес';
+    const V = T.verdicts;
+    return s >= 300 ? V[0] : s >= 250 ? V[1] : s >= 200 ? V[2] : s >= 150 ? V[3] : s >= 100 ? V[4] : s >= 50 ? V[5] : V[6];
   }
-  // CRC16-XMODEM + base64url: случайный адрес вида UQ
+  // CRC16-XMODEM + base64url: a random UQ address
   function crc16(b){ let c = 0; for (const x of b){ c ^= x << 8; for (let k = 0; k < 8; k++) c = (c & 0x8000) ? ((c << 1) ^ 0x1021) & 0xffff : (c << 1) & 0xffff; } return c; }
   const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
   function b64(b){ let s = ''; for (let i = 0; i < b.length; i += 3){ const n = (b[i] << 16) | (b[i+1] << 8) | b[i+2]; s += B64[(n>>18)&63] + B64[(n>>12)&63] + B64[(n>>6)&63] + B64[n&63]; } return s; }
   function randomUQ(){ const a = new Uint8Array(36); a[0] = 0x51; a[1] = 0; crypto.getRandomValues(a.subarray(2, 34)); const c = crc16(a.subarray(0, 34)); a[34] = c >> 8; a[35] = c & 255; return b64(a); }
   function b64d(s){ s = s.replace(/\+/g,'-').replace(/\//g,'_'); const o = []; for (let i = 0; i < s.length; i += 4){ const n = (B64.indexOf(s[i])<<18)|(B64.indexOf(s[i+1])<<12)|(B64.indexOf(s[i+2])<<6)|B64.indexOf(s[i+3]); o.push((n>>16)&255,(n>>8)&255,n&255); } return new Uint8Array(o); }
-  // Любой формат (UQ/EQ, url-safe или нет) → проверка CRC → вид UQ url-safe, как его показывают кошельки
+  // Any form (UQ/EQ, url-safe or not) → CRC check → the url-safe UQ form, as wallets show it
   function toUQ(raw){
     const s = raw.trim();
-    if (!/^[A-Za-z0-9_\-+/]{48}$/.test(s)) return { err: 'Нужен адрес из 48 символов: буквы, цифры, - и _ (или + и /).' };
+    if (!/^[A-Za-z0-9_\-+/]{48}$/.test(s)) return { err: T.errLen };
     const b = b64d(s);
-    if (b.length !== 36 || b.slice(2,34).some((x) => x < 0)) return { err: 'В адресе есть лишние символы.' };
+    if (b.length !== 36 || b.slice(2,34).some((x) => x < 0)) return { err: T.errChars };
     const c = crc16(b.subarray(0, 34));
-    if (((c >> 8) !== b[34]) || ((c & 255) !== b[35])) return { err: 'Контрольная сумма не сходится — в адресе опечатка.' };
-    if (b[1] !== 0) return { err: 'Это адрес не в основной цепочке (workchain 0). Страница оценивает только обычные адреса.' };
+    if (((c >> 8) !== b[34]) || ((c & 255) !== b[35])) return { err: T.errCrc };
+    if (b[1] !== 0) return { err: T.errWc };
     const was = s.slice(0, 2);
     const u = new Uint8Array(b); u[0] = (b[0] & 0x80) | 0x51; const c2 = crc16(u.subarray(0, 34)); u[34] = c2 >> 8; u[35] = c2 & 255;
     return { uq: b64(u), changed: was !== 'UQ' || /[+/]/.test(s), testnet: (b[0] & 0x80) !== 0 };
   }
   function mark(uq, words, reasons){
     const on = new Array(48).fill(false);
-    const startTxt = reasons.find((r) => r.startsWith('начало')) || '';
+    const startTxt = reasons.find((r) => r.startsWith('start:')) || '';
     for (const w of words){
       const sp = w.span; if (!sp) continue;
       let i = startTxt.includes(sp) ? uq.indexOf(sp, 2) : uq.lastIndexOf(sp);
@@ -194,15 +192,15 @@ a{color:var(--accent)}
     $('sc').textContent = s;
     $('vt').textContent = verdict(s);
     const n = oneIn(s);
-    $('rr').innerHTML = s < 50 ? 'Такие очки набирает большинство адресов.' : 'Набрать столько очков: <b>' + fmtN(n) + '</b> случайных адресов.';
+    $('rr').innerHTML = s < 50 ? T.rareMost : T.rareHtml.replace('{n}', fmtN(n));
     $('ad').innerHTML = mark(r.uq, g.words || [], g.reasons || []);
     const ch = [];
     if (g.label && s >= 50) ch.push('<span class="chip tier">' + g.label.split(':')[0] + '</span>');
-    for (const x of (g.reasons || []).slice(0, 6)) ch.push('<span class="chip">' + x.replace(/</g,'&lt;') + '</span>');
-    if (!ch.length) ch.push('<span class="chip">слов не нашлось</span>');
+    for (const x of (g.reasons || []).slice(0, 6)) ch.push('<span class="chip">' + tr(x).replace(/</g,'&lt;') + '</span>');
+    if (!ch.length) ch.push('<span class="chip">' + T.noWords + '</span>');
     $('ch').innerHTML = ch.join('');
     $('pin').style.left = Math.min(100, s / 300 * 100) + '%';
-    $('note').textContent = r.changed ? 'Показан вид UQ (url-safe), как адрес показывают кошельки. В виде EQ последние три символа — другая контрольная сумма, поэтому оценка у них может отличаться.' : (r.testnet ? 'Это адрес тестовой сети.' : '');
+    $('note').textContent = r.changed ? T.noteChanged : (r.testnet ? T.noteTestnet : '');
   }
   const EX = ['UQC5PS0DCjuLHTFvAy-2WB3TfV5utOrqSHWmBNxY3ah2goaT','UQDzdCq-qAR68Lq6KvweGQNDBsYUSVHSo96d25x4xa_0kUSh','UQBHZEO8PZ60426yiseuBbJBfSoICVT7TWBuMzW-Baaaaass','UQBLyA25xBc6o4Xwq7ZqJvtQ3HDPsgd4xiOXS7xtf219poor','UQAaPed5QqrkzPoCcm2zpdnWiTx9tfsMfILIk9Gd5-KNfarm','UQBUTTTTqcNR3XnNdRr_kWZyjMbZYYTCdkRNevbpAQQ7G7qP'];
   $('ex').innerHTML = EX.map((u) => '<button type="button" data-u="' + u + '">…' + u.slice(-12) + '</button>').join('');
@@ -218,11 +216,11 @@ a{color:var(--accent)}
       const until = performance.now() + 60;
       while (performance.now() < until) { const u = randomUQ(); const g = window.scoreV5(u); n++; if (!best || g.score > best.s) best = { u, s: g.score }; }
       const sec = (performance.now() - t0) / 1000;
-      $('hs').textContent = 'Проверено адресов: ' + n.toLocaleString('ru-RU') + ' (' + Math.round(n / sec).toLocaleString('ru-RU') + ' в секунду). Лучший пока набрал очков: ' + best.s + '.';
+      $('hs').textContent = T.huntProgress.replace('{n}', n.toLocaleString(T.locale)).replace('{r}', Math.round(n / sec).toLocaleString(T.locale)).replace('{s}', best.s);
       if (sec < 10) { setTimeout(step, 0); return; }
       busy = false; $('hunt').disabled = false;
       $('a').value = best.u; show(best.u);
-      $('hs').textContent += ' Он показан выше. Ключа у него нет — переводить на него нельзя.';
+      $('hs').textContent += T.huntDone;
       $('out').scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
     step();

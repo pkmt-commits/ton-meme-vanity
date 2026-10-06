@@ -1,6 +1,6 @@
-// Оценщик v5 (src/score_v5.mjs + словари + data/) одним браузерным скриптом без node:fs — для docs/*.html.
-// scorerBundle({ target: 'window' | 'self', internals: true }) → строка JS; внутри — тот же код, данные вшиты строками.
-// internals: ещё и Z/THEME/VOTES/FUNC2/P5/SLANG_SET (нужны быстрому предфильтру web/lite.js).
+// The v5 scorer (src/score_v5.mjs + dictionaries + data/) as a single browser script without node:fs — for docs/*.html.
+// scorerBundle({ target: 'window' | 'self', internals: true }) → a JS string; inside it is the same code, with the data inlined as strings.
+// internals: also exposes Z/THEME/VOTES/FUNC2/P5/SLANG_SET (needed by the fast prefilter web/lite.js).
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,25 +12,25 @@ const strip = (s) => s.replace(/^﻿/, '').replace(/^import .*$/gm, '').replace(
 export function scorerBundle({ target = 'window', internals = false } = {}) {
   const curated = strip(rd('src/words_curated.mjs'));
   const gems = rd('src/gems.mjs');
-  const slang = gems.slice(gems.indexOf('const SLANG = '), gems.indexOf('// большой словарь'));
+  const slang = gems.slice(gems.indexOf('const SLANG = '), gems.indexOf('// big dictionary'));
   const strongLine = gems.match(/const STRONG_ALL = .*\n/);
-  if (!slang.startsWith('const SLANG') || !strongLine) throw new Error('src/gems.mjs: не нашёл SLANG / STRONG_ALL — поправьте scripts/scorer-bundle.mjs');
+  if (!slang.startsWith('const SLANG') || !strongLine) throw new Error('src/gems.mjs: could not find SLANG / STRONG_ALL — fix scripts/scorer-bundle.mjs');
   const score = strip(rd('src/score_v5.mjs'))
     .replace("fs.readFileSync(new URL('../data/en_zipf.tsv', import.meta.url), 'utf8')", 'ZIPF_TSV')
     .replace("fs.readFileSync(new URL('../data/word_votes.json', import.meta.url), 'utf8')", 'VOTES_JSON');
-  if (/\bfs\.|import\.meta/.test(score)) throw new Error('src/score_v5.mjs: остались обращения к файлам — поправьте scripts/scorer-bundle.mjs');
+  if (/\bfs\.|import\.meta/.test(score)) throw new Error('src/score_v5.mjs: file system accesses remain — fix scripts/scorer-bundle.mjs');
   const expose = internals ? `${target}.__v5 = { Z, THEME, VOTES, FUNC2, P5, SLANG_SET };\n` : '';
   return `(function(){\nconst ZIPF_TSV = ${JSON.stringify(rd('data/en_zipf.tsv'))};\nconst VOTES_JSON = ${JSON.stringify(rd('data/word_votes.json'))};\n`
     + `${curated}\n${slang}\n${strongLine[0]}const SLANG_SET = new Set(STRONG_ALL);\n${score}\n${target}.scoreV5 = scoreV5;\n${expose}})();\n`;
 }
 
-// сверка: вшитый оценщик даёт те же очки, что Node-версия
+// check: the inlined scorer gives the same scores as the Node version
 export async function checkBundle(bundle) {
   const { scoreV5 } = await import('../src/score_v5.mjs');
   const win = {};
   new Function('window', 'self', bundle)(win, win);
   for (const uq of ['UQC5PS0DCjuLHTFvAy-2WB3TfV5utOrqSHWmBNxY3ah2goaT', 'UQBHZEO8PZ60426yiseuBbJBfSoICVT7TWBuMzW-Baaaaass', 'UQBLyA25xBc6o4Xwq7ZqJvtQ3HDPsgd4xiOXS7xtf219poor']) {
-    if (JSON.stringify(win.scoreV5(uq)) !== JSON.stringify(scoreV5(uq))) throw new Error('браузерная оценка разошлась с Node: ' + uq);
+    if (JSON.stringify(win.scoreV5(uq)) !== JSON.stringify(scoreV5(uq))) throw new Error('browser score differs from the Node score: ' + uq);
   }
   return win;
 }

@@ -1,6 +1,6 @@
-// Выборка случайных адресов для замера полноты GPU-сита: N случайных хешей → адрес UQ → scoreV5 → всё с score ≥ MIN
-// пишется в файл (только адреса, ключей нет — это не кошельки). Параллельно на всех ядрах.
-//   node src/recall_sample.mjs <N в миллионах> <out.jsonl> [min=90]
+// Sample of random addresses for measuring the recall of the GPU sieve: N random hashes → UQ address → scoreV5 → everything with score ≥ MIN
+// is written to a file (addresses only, no keys — these are not wallets). Runs in parallel on all cores.
+//   node src/recall_sample.mjs <N in millions> <out.jsonl> [min=90]
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import os from 'node:os';
 import fs from 'node:fs';

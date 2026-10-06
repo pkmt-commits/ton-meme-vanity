@@ -1,8 +1,7 @@
-<title>Свой красивый TON-адрес</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&family=Unbounded:wght@700;800&display=swap">
 <style>
-/* Пульт поиска: сверху управление и счётчики, ниже — лента лучших находок; адреса моноширинным, слова маркером */
+/* Search console: controls and counters on top, the best finds below; addresses in monospace, words with a marker */
 :root{
   --bg:#eef1f5; --card:#ffffff; --fg:#141922; --muted:#5d6878; --line:#d9dfe8;
   --accent:#0f6fde; --mark:#ffe36e; --mark-fg:#1a1500; --uq:#9aa4b2; --soft:#e7effa; --warn:#9a5b00; --warn-soft:#fbf0dc; --bad:#c43d2b;
@@ -49,52 +48,54 @@ select{padding:8px;border-radius:8px;border:1px solid var(--line);background:var
 .err{color:var(--bad);font-weight:600}
 ol{margin:0;padding-left:20px;display:grid;gap:4px}
 a{color:var(--accent)}
+.lang{justify-self:end;font-size:14px}
 @media (max-width:560px){ .stats{grid-template-columns:repeat(2,minmax(0,1fr))} }
 </style>
 
 <div class="wrap">
   <header style="display:grid;gap:8px">
-    <h1>Свой красивый TON-адрес</h1>
-    <p class="sub">Страница перебирает ключи прямо в вашем браузере и оставляет адреса, в которых видны слова и фразы: интересные, красивые, мемные. Ключи создаются на этом устройстве и никуда не отправляются. Найденный кошелёк импортируется в MyTonWallet.</p>
+    <p class="lang">{{lang}}</p>
+    <h1>{{h1}}</h1>
+    <p class="sub">{{sub}}</p>
   </header>
 
   <section class="card">
     <div class="row">
-      <button class="primary" id="go">Начать поиск</button>
-      <button id="stop" disabled>Остановить</button>
-      <label for="thr">Потоков</label>
+      <button class="primary" id="go">{{btnGo}}</button>
+      <button id="stop" disabled>{{btnStop}}</button>
+      <label for="thr">{{threads}}</label>
       <select id="thr"></select>
-      <label for="ver">Версии кошелька</label>
-      <select id="ver"><option value="1">только W5</option><option value="4" selected>W5, V4R2, V3R2, V3R1</option></select>
+      <label for="ver">{{versions}}</label>
+      <select id="ver"><option value="1">{{verW5}}</option><option value="4" selected>W5, V4R2, V3R2, V3R1</option></select>
     </div>
     <div class="stats">
-      <div class="stat"><b id="sN">0</b><span>адресов проверено</span></div>
-      <div class="stat"><b id="sR">0</b><span>в секунду</span></div>
-      <div class="stat"><b id="sT">0:00</b><span>время</span></div>
-      <div class="stat"><b id="sB">—</b><span>лучший, очков</span></div>
+      <div class="stat"><b id="sN">0</b><span>{{statN}}</span></div>
+      <div class="stat"><b id="sR">0</b><span>{{statR}}</span></div>
+      <div class="stat"><b id="sT">0:00</b><span>{{statT}}</span></div>
+      <div class="stat"><b id="sB">—</b><span>{{statB}}</span></div>
     </div>
-    <p class="small" id="status">Нажмите «Начать поиск». Чем дольше поиск, тем красивее лучший адрес: каждые +10 очков встречаются примерно вдвое реже.</p>
+    <p class="small" id="status">{{statusIdle}}</p>
   </section>
 
   <section class="card">
-    <h2>Лучшие находки</h2>
-    <ol class="list" id="list"><li class="small">Здесь появятся адреса с очками от 120 — обычно в первые секунды.</li></ol>
+    <h2>{{bestTitle}}</h2>
+    <ol class="list" id="list"><li class="small">{{listEmpty}}</li></ol>
   </section>
 
   <section class="warn">
-    <b>Безопасность</b>
-    <p>Ключ — это доступ к деньгам. Он создаётся генератором случайных чисел браузера и хранится только в памяти этой вкладки: закроете вкладку — ключ пропадёт, если вы его не сохранили.</p>
-    <p>Кто управляет кодом страницы, мог бы подменить генерацию. Для заметных сумм сохраните страницу (Ctrl+S), отключите интернет и ищите офлайн, либо используйте генератор на видеокарте из <a href="https://github.com/pkmt-commits/ton-meme-vanity">репозитория</a> — код открыт.</p>
-    <p>Скопированный ключ остаётся в журнале буфера обмена (Windows: Win+V) — очистите его после импорта. Перед переводом заметной суммы сверьте адрес в кошельке символ в символ и отправьте сначала немного.</p>
+    <b>{{secTitle}}</b>
+    <p>{{sec1}}</p>
+    <p>{{sec2}}</p>
+    <p>{{sec3}}</p>
   </section>
 
   <section class="card">
-    <h2>Как завести найденный кошелёк</h2>
+    <h2>{{howTitle}}</h2>
     <ol class="small">
-      <li>В MyTonWallet: добавить кошелёк → <b>Import from Secret Words</b>.</li>
-      <li>В поле <b>первого слова</b> вставьте ключ (64 символа) — без пробелов и переноса строки.</li>
-      <li>Если у находки версия не W5: Настройки → <b>Wallet Versions</b> → выберите её.</li>
-      <li>Сверьте адрес с найденным символ в символ.</li>
+      <li>{{how1}}</li>
+      <li>{{how2}}</li>
+      <li>{{how3}}</li>
+      <li>{{how4}}</li>
     </ol>
   </section>
 </div>
@@ -103,13 +104,17 @@ a{color:var(--accent)}
 <script>
 (function(){
   const $ = (id) => document.getElementById(id);
+  const T = /*T*/null;
+  const RR = T.reasons.map(([p, r]) => [new RegExp(p), r]);
+  const tr = (s) => s.split(', ').map((x) => RR.reduce((a, [p, r]) => a.replace(p, r), x)).join(', ');
+  const ERR = { start: T.errStart, keys: T.errKeys, addr: T.errAddr };
   const cores = Math.max(1, navigator.hardwareConcurrency || 4);
   for (let i = 1; i <= cores; i++) { const o = document.createElement('option'); o.value = i; o.textContent = i; if (i === Math.max(1, cores - 1)) o.selected = true; $('thr').appendChild(o); }
   const workerUrl = URL.createObjectURL(new Blob([document.getElementById('wsrc').textContent], { type: 'text/javascript' }));
   let workers = [], counts = [], best = [], t0 = 0, timer = 0, running = false;
-  const fmt = (n) => n >= 1e9 ? (n / 1e9).toFixed(2) + ' млрд' : n >= 1e6 ? (n / 1e6).toFixed(1) + ' млн' : n >= 1e3 ? Math.round(n / 1e3) + ' тыс.' : String(n);
+  const fmt = (n) => { const [b, m, k] = T.units; return n >= b[0] ? (n / b[0]).toFixed(2).replace('.', T.dec) + b[1] : n >= m[0] ? (n / m[0]).toFixed(1).replace('.', T.dec) + m[1] : n >= k[0] ? Math.round(n / k[0]) + k[1] : String(n); };
   function mark(uq, words, reasons){
-    const on = new Array(48).fill(false), startTxt = (reasons || []).find((r) => r.startsWith('начало')) || '';
+    const on = new Array(48).fill(false), startTxt = (reasons || []).find((r) => r.startsWith('start:')) || '';
     for (const w of words || []) { const sp = w.span; if (!sp) continue; let i = startTxt.includes(sp) ? uq.indexOf(sp, 2) : uq.lastIndexOf(sp); if (i < 2) i = uq.indexOf(sp, 2); if (i >= 2) for (let k = i; k < i + sp.length; k++) on[k] = true; }
     let h = '<span class="uq">UQ</span>';
     for (let k = 2; k < 48; k++) { if (on[k] && !on[k-1]) h += '<mark>'; h += uq[k]; if (on[k] && (k === 47 || !on[k+1])) h += '</mark>'; }
@@ -117,19 +122,19 @@ a{color:var(--accent)}
   }
   function render(){
     if (!best.length) return;
-    $('list').innerHTML = best.map((r, i) => '<li class="item"><div class="top"><span class="sc">' + r.score + '</span><span class="meta">' + r.label.split(':')[0] + ' · ' + r.ver + ' · ' + r.reasons.slice(0, 2).join('; ') + '</span></div>'
+    $('list').innerHTML = best.map((r, i) => '<li class="item"><div class="top"><span class="sc">' + r.score + '</span><span class="meta">' + r.label.split(':')[0] + ' · ' + r.ver + ' · ' + r.reasons.slice(0, 2).map(tr).join('; ') + '</span></div>'
       + '<div class="addr">' + mark(r.uq, r.words, r.reasons) + '</div>'
-      + '<div class="row"><button data-i="' + i + '" data-a="key">Показать ключ</button><button data-i="' + i + '" data-a="copyaddr">Копировать адрес</button></div>'
-      + (r.open ? '<div class="key"><code>' + r.seed + '</code><div class="row"><button data-i="' + i + '" data-a="copykey">Копировать ключ</button></div><p>Это приватный ключ (сид). Никому не показывайте и не отправляйте. ' + (r.ver !== 'W5' ? 'После импорта переключите версию на <b>' + r.ver + '</b>.' : '') + '</p></div>' : '')
+      + '<div class="row"><button data-i="' + i + '" data-a="key">' + T.btnShowKey + '</button><button data-i="' + i + '" data-a="copyaddr">' + T.btnCopyAddr + '</button></div>'
+      + (r.open ? '<div class="key"><code>' + r.seed + '</code><div class="row"><button data-i="' + i + '" data-a="copykey">' + T.btnCopyKey + '</button></div><p>' + T.keyNote + (r.ver !== 'W5' ? T.switchVer.replace('{v}', r.ver) : '') + '</p></div>' : '')
       + '</li>').join('');
   }
   $('list').addEventListener('click', async (e) => {
     const b = e.target.closest('button'); if (!b) return; const r = best[+b.dataset.i]; if (!r) return;
     if (b.dataset.a === 'key') { r.open = !r.open; render(); }
-    else { const text = b.dataset.a === 'copykey' ? r.seed : r.uq; try { await navigator.clipboard.writeText(text); b.textContent = 'Скопировано'; } catch { b.textContent = 'Выделите и скопируйте вручную'; } }
+    else { const text = b.dataset.a === 'copykey' ? r.seed : r.uq; try { await navigator.clipboard.writeText(text); b.textContent = T.copied; } catch { b.textContent = T.copyManual; } }
   });
   function onMsg(i, m){
-    if (m.err) { stop(); $('status').innerHTML = '<span class="err">' + m.err + '</span>'; return; }
+    if (m.err) { stop(); $('status').innerHTML = '<span class="err">' + (ERR[m.err] || m.err) + (m.msg ? ': ' + String(m.msg).replace(/</g, '&lt;') : '') + '</span>'; return; }
     if (m.ready) return;
     counts[i] = m.n;
     for (const r of m.found || []) {
@@ -147,15 +152,15 @@ a{color:var(--accent)}
   function start(){
     if (running) return; running = true; $('go').disabled = true; $('stop').disabled = false; $('thr').disabled = true; $('ver').disabled = true;
     const k = +$('thr').value, ver = +$('ver').value; counts = new Array(k).fill(0); t0 = performance.now();
-    $('status').textContent = 'Самопроверка и поиск… Вкладку можно свернуть, но не закрывать.';
+    $('status').textContent = T.statusRunning;
     for (let i = 0; i < k; i++) { const w = new Worker(workerUrl); w.onmessage = (e) => onMsg(i, e.data); w.postMessage({ ver, min: 120 }); workers.push(w); }
     timer = setInterval(tick, 500);
   }
   function stop(){
     for (const w of workers) w.terminate(); workers = []; running = false; clearInterval(timer); tick();
     $('go').disabled = false; $('stop').disabled = true; $('thr').disabled = false; $('ver').disabled = false;
-    $('go').textContent = 'Продолжить поиск';
-    $('status').textContent = 'Поиск остановлен. Найденные ключи живут, пока открыта вкладка — сохраните нужный.';
+    $('go').textContent = T.btnContinue;
+    $('status').textContent = T.statusStopped;
   }
   $('go').addEventListener('click', start); $('stop').addEventListener('click', stop);
 })();

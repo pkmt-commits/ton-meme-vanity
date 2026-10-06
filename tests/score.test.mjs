@@ -1,13 +1,13 @@
-// Оценка «смешности»: явные находки должны проходить порог сохранения, случайные адреса — нет.
-// npm test   (видеокарта не нужна)
+// Address score (how eye-catching an address is): obvious finds must pass the save threshold, random addresses must not.
+// npm test   (no GPU needed)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { scoreV5 } from '../src/score_v5.mjs';
 
-const SAVE_MIN = 150;   // порог записи в gems.jsonl по умолчанию (src/run_cuda.mjs)
+const SAVE_MIN = 150;   // default threshold for writing to gems.jsonl (src/run_cuda.mjs)
 
-// Настоящие адреса из тестового прогона. Ключи от них уничтожены — деньги на них не отправлять.
+// Real addresses from a test run. Their keys have been destroyed — do not send money to them.
 const FUNNY = [
   'UQBHZEO8PZ60426yiseuBbJBfSoICVT7TWBuMzW-Baaaaass',
   'UQC5PS0DCjuLHTFvAy-2WB3TfV5utOrqSHWmBNxY3ah2goaT',
@@ -20,7 +20,7 @@ const FUNNY = [
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 const randomUq = () => 'UQ' + 'ABCD'[crypto.randomInt(4)] + Array.from({ length: 45 }, () => B64[crypto.randomInt(64)]).join('');
 
-test('явные находки проходят порог сохранения', () => {
+test('obvious finds pass the save threshold', () => {
   for (const uq of FUNNY) {
     const r = scoreV5(uq);
     assert.ok(r.score >= SAVE_MIN, `${uq}: score ${r.score} (${r.label})`);
@@ -29,14 +29,14 @@ test('явные находки проходят порог сохранения
   }
 });
 
-test('случайные адреса почти никогда не проходят порог', () => {
+test('random addresses almost never pass the threshold', () => {
   let passed = 0;
   for (let i = 0; i < 2000; i++) if (scoreV5(randomUq()).score >= SAVE_MIN) passed++;
-  // на видеокарте сито пропускает ~1 из 10 000, оценка — малую часть из них; среди 2000 случайных — единицы максимум
-  assert.ok(passed <= 5, `прошло порог ${passed} из 2000 случайных`);
+  // the GPU sieve passes ~1 in 10,000 addresses and the score accepts a small fraction of those; among 2000 random ones, a handful at most
+  assert.ok(passed <= 5, `${passed} of 2000 random addresses passed the threshold`);
 });
 
-test('оценка детерминирована и не падает на любых строках из алфавита адреса', () => {
+test('the score is deterministic and does not crash on any string over the address alphabet', () => {
   for (let i = 0; i < 2000; i++) {
     const uq = randomUq();
     const a = scoreV5(uq), b = scoreV5(uq);

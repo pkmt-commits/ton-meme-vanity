@@ -1,16 +1,16 @@
-// ---------------- сито v5-lite (2026-10-05): оценка v5 прямо на видеокарте ----------------
-// Старое сито (правила слов в detector_words.inc) пропускало лишь ~25% адресов, которые v5 оценивает на 150+:
-// не видело трёхбуквенных слов на границе регистра (scamKEK, L0hRug), «рваного» регистра (RugWEeD) и знало 7 тыс. слов
-// вместо ~47 тыс. Здесь — та же разметка на слова, что в src/score_v5.mjs: разбор хвоста с конца адреса, начала,
-// растянутые слова где угодно; тот же словарь (cuda/v5dict.h из src/gpu_dict_v5.mjs), те же веса и заметность.
-// Хвост разбирается «толкающим» способом: только от разобранных мест, по обратному индексу (слова, КОНЧАЮЩИЕСЯ в месте),
-// поэтому у случайного адреса это один-два перебора. Замер (200 млн случайных адресов): оценка GPU = v5 ±2 очка у 96–99%,
-// полнота при 150+ — 99% (старое сито 25%) при той же скорости. Семейство «серий» ловят дешёвые правила в is_gem_v5.
+// ---------------- v5-lite sieve (2026-10-05): v5 scoring right on the GPU ----------------
+// The old sieve (the word rules in detector_words.inc) let through only ~25% of the addresses that v5 scores at 150+:
+// it did not see three-letter words at a case boundary (scamKEK, L0hRug) or "ragged" case (RugWEeD), and knew 7K words
+// instead of ~47K. Here we use the same word segmentation as src/score_v5.mjs: parsing the tail from the end of the address, the start,
+// stretched words anywhere; the same dictionary (cuda/v5dict.h from src/gpu_dict_v5.mjs), the same weights and visibility.
+// The tail is parsed in a "pushing" way: only from already-parsed positions, via the reverse index (words ENDING at that position),
+// so for a random address this takes one or two scans. Measured (200M random addresses): the GPU score = v5 ±2 points for 96–99%,
+// recall at 150+ is 99% (old sieve 25%) at the same speed. The "runs" family is caught by the cheap rules in is_gem_v5.
 #include "v5dict.h"
-#define BN 46            // длина адреса без «UQ»
+#define BN 46            // address length without "UQ"
 __device__ unsigned short V5S_L[KT*K3SUB+1], V5S_D[KT*K3SUB+1];
 __device__ unsigned short V5IDX_L[V5N], V5IDX_D[V5N];
-// обратный индекс: ключ — три последние пробежки слова (для перебора слов, КОНЧАЮЩИХСЯ в данном месте)
+// reverse index: the key is the last three runs of a word (for scanning words ENDING at a given position)
 __device__ unsigned short V5R_S_L[KT*K3SUB+1], V5R_S_D[KT*K3SUB+1];
 __device__ unsigned short V5R_IDX_L[V5N], V5R_IDX_D[V5N];
 
@@ -21,7 +21,7 @@ __device__ __forceinline__ bool b_lo(char c){ return c>='a'&&c<='z'; }
 __device__ __forceinline__ bool b_let(char c){ return b_up(c)||b_lo(c); }
 __device__ __forceinline__ bool b_caseCut(const char* b,int j){ return b_let(b[j-1])&&b_let(b[j])&&(b_up(b[j-1])!=b_up(b[j])); }
 
-// совпадение слова w в X[p..n) с растяжкой; последнюю пробежку можно оборвать раньше: концы [minE, maxE]
+// match of the word w in X[p..n) with stretching; the last run may be cut short: the ends are [minE, maxE]
 __device__ __forceinline__ int v5_fuzzy(const char* X, int n, int p, int w, int &minE){
   int i=p,k=0,L=V5LEN[w];
   while(k<L){
@@ -32,7 +32,7 @@ __device__ __forceinline__ int v5_fuzzy(const char* X, int n, int p, int w, int 
   }
   return i;
 }
-// регистр отрезка: 0 U (ВСЁ), 1 L (всё), 2 C (Всё), 3 M (рваный или без букв)
+// case of a segment: 0 U (UPPER), 1 L (lower), 2 C (Capitalized), 3 M (ragged, or no letters)
 __device__ int v5_case(const char* b,int i,int e){
   int nu=0,nl=0,first=-1; bool restLow=true;
   for(int k=i;k<e;k++){ char c=b[k]; if(b_up(c)){ if(first<0) first=1; else restLow=false; nu++; } else if(b_lo(c)){ if(first<0) first=0; nl++; } }
@@ -53,7 +53,7 @@ __device__ __forceinline__ float v5_extra(const char* b,int n,int sp,int out,int
   if(out>=0&&out<n&&b_let(b[out])&&b_let(b[inner])&&(b_up(b[out])!=b_up(b[inner]))) return P5_sepCase;
   return 0.f;
 }
-// заметность отрезка [i,e) в строке длины n (как withVis)
+// visibility of the segment [i,e) in a string of length n (as in withVis)
 __device__ float v5_vis(const char* b,int n,int i,int e){
   int cls=v5_case(b,i,e);
   float v=(v5_edge(b,n,i-1,cls,true)+v5_edge(b,n,e,cls,false))*0.5f;
@@ -61,7 +61,7 @@ __device__ float v5_vis(const char* b,int n,int i,int e){
   v+=(v5_extra(b,n,i-1,i-2,i)+v5_extra(b,n,e,e+1,e-1))*0.5f;
   return v;
 }
-// выигрыш слова без заметности (как wordInfo)
+// the gain of a word without visibility (as in wordInfo)
 __device__ __forceinline__ float v5_raw(const char* b,int w,int i,int e){
   int L=V5LEN[w]; unsigned char fl=V5FLAGS[w];
   int st=e-i-L; if(st>(int)P5_stretchCap) st=(int)P5_stretchCap;
@@ -73,8 +73,8 @@ __device__ __forceinline__ float v5_raw(const char* b,int w,int i,int e){
 __device__ __forceinline__ bool v5_shortOk(const char* b,int n,int i,int e){
   return (e-i>2) || ((i==0||b_sep(b[i-1])||b_dig(b[i-1])) && (e==n||b_sep(b[e])||b_dig(b[e])));
 }
-// перебор слов, начинающихся в i в строке длины n: want(e) — нужен ли такой конец (проверяется до подсчёта выигрыша);
-// f(w, e, gain, vis). XA — строка для буквенных слов (leet-версия или просто нижний регистр), leetOk — правила leet
+// scan the words starting at i in a string of length n: want(e) says whether such an end is needed (checked before computing the gain);
+// f(w, e, gain, vis). XA is the string for letter words (the leet version or just lower case), leetOk — the leet rules
 template<typename P, typename F>
 __device__ void v5_words_at(const char* b,const char* low,const char* XA,int n,int i,bool leetRules,P want,F f){
   for(int t=0;t<2;t++){
@@ -87,7 +87,7 @@ __device__ void v5_words_at(const char* b,const char* low,const char* XA,int n,i
     int lists[3][2]={{c2<38?S[ka+c2]:0, c2<38?S[ka+c2+1]:0},{S[ka+39],S[ka+40]},{S[kb],S[kb+1]}};
     for(int li=0;li<3;li++) for(int x=lists[li][0]; x<lists[li][1]; x++){
       int w=I[x]; int minE; int maxE=v5_fuzzy(X,n,i,w,minE); if(maxE<0) continue;
-      if(t==0 && leetRules && b_dig(low[i])) continue;          // leet: слово не с цифры
+      if(t==0 && leetRules && b_dig(low[i])) continue;          // leet: a word does not start with a digit
       int L=V5LEN[w];
       for(int e=minE;e<=maxE;e++){
         if(!want(e)) continue;
@@ -99,8 +99,8 @@ __device__ void v5_words_at(const char* b,const char* low,const char* XA,int n,i
     }
   }
 }
-// совпадение слова w, КОНЧАЮЩЕГОСЯ в e (X[..e)), с растяжкой. Внутренние и последняя пробежки съедаются целиком (как при
-// прямом разборе), первая — частично: допустимые начала [iMin, iMax]. -1 — не совпало.
+// match of the word w ENDING at e (X[..e)), with stretching. The inner and the last runs are consumed whole (as in
+// the forward parse), the first one partially: the allowed starts are [iMin, iMax]. -1 = no match.
 __device__ __forceinline__ int v5_fuzzy_rev(const char* X, int e, int w, int &iMax){
   int p=e-1, k=V5LEN[w]-1;
   while(k>=0){
@@ -111,7 +111,7 @@ __device__ __forceinline__ int v5_fuzzy_rev(const char* X, int e, int w, int &iM
   }
   return -1;
 }
-// перебор слов, кончающихся в e: f(w, i, gain, vis) для каждого допустимого начала i
+// scan the words ending at e: f(w, i, gain, vis) for every allowed start i
 template<typename F>
 __device__ void v5_words_end(const char* b,const char* low,const char* lt,int n,int e,F f){
   for(int t=0;t<2;t++){
@@ -134,7 +134,7 @@ __device__ void v5_words_end(const char* b,const char* low,const char* lt,int n,
     }
   }
 }
-// состояние разбора: g — выигрыш; fl: 1 есть слова, 2 есть длинное, 4 последнее — слово, 8 длинное с повтором букв, 16 сленг
+// parse state: g = gain; fl: 1 has words, 2 has a long one, 4 the last item is a word, 8 a long one with repeated letters, 16 slang
 struct V5St { float g; unsigned char nw, nc, fl, w1len; float w1vis; };
 #define V5NULL (-1e30f)
 __device__ __forceinline__ void v5_dadj(const char* b,int n,float* dAdj){
@@ -143,18 +143,18 @@ __device__ __forceinline__ void v5_dadj(const char* b,int n,float* dAdj){
     bool lone=(i==0||!b_dig(b[i-1]))&&(i==n-1||!b_dig(b[i+1]));
     if(c=='0') dAdj[i]=0.f; else if((c=='2'||c=='4')&&lone) dAdj[i]=P5_digitToFor; else if(dcnt[c-'0']>=2) dAdj[i]=0.f; else dAdj[i]=-P5_digitSep; }
 }
-// лучший хвост строки b[0..n) (как analyze().suf + bestTail); k — множитель «почти хвоста».
-// Разбор «толкающий»: идём справа налево, и из каждого разобранного места e перебираем только слова, кончающиеся в e
-// (обратный индекс). У случайного адреса разобрано обычно одно место — конец, поэтому перебор один-два раза на адрес.
+// the best tail of the string b[0..n) (as analyze().suf + bestTail); k is the "almost-tail" multiplier.
+// The parse is "pushing": we go from right to left, and from every parsed position e we scan only the words ending at e
+// (the reverse index). A random address usually has one parsed position, the end, so there are one or two scans per address.
 __device__ void v5_tail(const char* b,const char* low,const char* lt,int n,float k,float &bestG,int &bestStart,int &bestNc,bool &bestDup){
   float dAdj[BN]; v5_dadj(b,n,dAdj);
   V5St suf[BN+1]; for(int i=0;i<=n;i++) suf[i].g=V5NULL;
   suf[n].g=0.f; suf[n].nw=0; suf[n].nc=0; suf[n].fl=0;
   for(int e=n;e>0;e--){
     const V5St nx=suf[e]; if(nx.g<=V5NULL) continue;
-    // разделитель/цифра перед e
+    // separator/digit before e
     if(b_sep(b[e-1])||b_dig(b[e-1])){ float cg=nx.g+(nx.nw?dAdj[e-1]:0.f); if(cg>suf[e-1].g){ suf[e-1]=nx; suf[e-1].g=cg; suf[e-1].fl&=~4; } }
-    // слово [i,e): после него — конец, разделитель/цифра или другое слово
+    // word [i,e): what follows it is the end, a separator/digit, or another word
     if(!(e==n || b_sep(b[e]) || b_dig(b[e]) || (nx.fl&4))) continue;
     v5_words_end(b,low,lt,n,e,[&](int w,int i,float g,float vis){
       float cg=nx.g+g;
@@ -173,16 +173,16 @@ __device__ void v5_tail(const char* b,const char* low,const char* lt,int n,float
   }
 }
 
-// приближённые биты v5 (как scoreV5 без семейства «серий»)
+// approximate v5 bits (as scoreV5 without the "runs" family)
 __device__ float v5lite_bits(const char* raw){
   const char* b=raw+2;
   char low[BN], lt[BN];
   for(int i=0;i<BN;i++){ char c=b[i]; if(b_up(c)) c+=32; low[i]=c; lt[i]=g_leet(c); }
   int seps=0, run=1, runBest=1; for(int i=0;i<BN;i++){ if(b_sep(b[i])) seps++; if(i&&b[i]==b[i-1]){ if(++run>runBest) runBest=run; } else run=1; }
-  // --- хвост (+ «почти хвост»: после фразы 1–2 мусорных символа через разделитель/цифру) ---
+  // --- tail (+ "almost tail": 1–2 junk characters after the phrase, past a separator/digit) ---
   float tailG=V5NULL; int tailStart=BN, nT=0; bool dupLong=false;
   v5_tail(b,low,lt,BN,1.f,tailG,tailStart,nT,dupLong);
-#ifdef V5_CUT   // «почти хвост» (+1–2% полноты ценой −35% скорости) — по умолчанию выключен
+#ifdef V5_CUT   // "almost tail" (+1–2% recall at the cost of −35% speed) — off by default
   for(int cut=1; cut<=2; cut++){
     int c=BN-cut; if(!(b_sep(b[c-1])||b_dig(b[c-1])||b_sep(b[c]))) continue;
     float g=V5NULL; int st=BN, nc=0; bool dp=false;
@@ -192,7 +192,7 @@ __device__ float v5lite_bits(const char* raw){
 #endif
   float bits=0.f; int startEnd=-1;
   if(tailG>V5NULL){
-    // --- начало: префиксный разбор (с 0 и, если b[1] — разделитель, с 2) ---
+    // --- start: prefix parse (from 0 and, if b[1] is a separator, from 2) ---
     float startG=0.f; int nS=0;
     if(tailStart>0) for(int off=0; off<=2; off+=2){
       if(off==2 && !b_sep(b[1])) break;
@@ -226,7 +226,7 @@ __device__ float v5lite_bits(const char* raw){
       }
     }
     if(tailStart==0){ startG=0.f; nS=0; startEnd=-1; }
-    // --- редкости (combo) ---
+    // --- rarities (combo) ---
     float combo=0.f;
     if(dupLong) combo+=4.f;
     if(seps>=7) combo+=3.f+(seps-7);
@@ -245,7 +245,7 @@ __device__ float v5lite_bits(const char* raw){
       if(nAll<2) bits*=P5_singleK;
     } else { tailStart=BN; startEnd=-1; }
   }
-  // --- растянутое слово где угодно (серия одного символа ≥4 в точном регистре): только если такая серия есть ---
+  // --- a stretched word anywhere (a run of one character ≥4 in exact case): only if such a run exists ---
   float midB=0.f, innerLong=0.f;
   if(runBest>=4){
     for(int i=0;i<BN;i++){
@@ -257,7 +257,7 @@ __device__ float v5lite_bits(const char* raw){
           float raw=v5_raw(b,w,i,e); if(raw<=0.f) return;
           bool inPhrase = bits>0.f && (i>=tailStart || (startEnd>=0 && e<=startEnd));
           float lng=4.f*(float)max(0, rb-4);
-          if(inPhrase){ if(lng>innerLong) innerLong=lng; return; }   // внутри фразы — только надбавка за длинную серию
+          if(inPhrase){ if(lng>innerLong) innerLong=lng; return; }   // inside a phrase — only a bonus for a long run
           bool atStart = i==0 || (i==2 && b_sep(b[1])) || (i==1 && b[0]>='A'&&b[0]<='D' && (b[0]+32)!=V5W[w][0]);
           float mb=(raw + lng + (atStart?6.f:0.f) - (i==0?P5_startAD:0.f))*(1.f-0.35f*(1.f-vis));
           if(v5_case(b,i,e)==3) mb*=0.6f;
@@ -270,7 +270,7 @@ __device__ float v5lite_bits(const char* raw){
   return hi + lo*0.3f;
 }
 
-// хост: индекс словаря v5 (как K3: ключ первых трёх пробежек)
+// host: the v5 dictionary index (like K3: the key is the first three runs)
 static void build_v5idx(){
   static char dict[V5N][V5MAXL]; static unsigned char dlen[V5N], fl[V5N];
   cudaMemcpyFromSymbol(dict,V5W,sizeof dict); cudaMemcpyFromSymbol(dlen,V5LEN,sizeof dlen); cudaMemcpyFromSymbol(fl,V5FLAGS,sizeof fl);
@@ -291,7 +291,7 @@ static void build_v5idx(){
     if(t==0){ cudaMemcpyToSymbol(V5S_L,s3,sizeof s3); cudaMemcpyToSymbol(V5IDX_L,idx3,sizeof idx3); }
     else    { cudaMemcpyToSymbol(V5S_D,s3,sizeof s3); cudaMemcpyToSymbol(V5IDX_D,idx3,sizeof idx3); }
   }
-  // обратный индекс: то же по перевёрнутым словам
+  // reverse index: the same over the reversed words
   for(int t=0;t<2;t++){
     static int key3[V5N], cnt3[KT*K3SUB], fill3[KT*K3SUB]; static unsigned short s3[KT*K3SUB+1], idx3[V5N];
     memset(cnt3,0,sizeof cnt3); memset(fill3,0,sizeof fill3);

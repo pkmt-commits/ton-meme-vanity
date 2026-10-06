@@ -1,7 +1,7 @@
-// Установка одной командой: проверка окружения → сборка ядра под вашу видеокарту → самопроверка.
-//   npm run setup            (можно запускать повторно; при ошибке печатает, что сделать)
-//   npm run setup -- --force (пересобрать ядро, даже если оно уже собрано)
-// Только встроенные модули Node: скрипт работает до `npm ci`.
+// One-command setup: environment check → kernel build for your GPU → self-test.
+//   npm run setup            (safe to re-run; on failure it prints what to do)
+//   npm run setup -- --force (rebuild the kernel even if it is already built)
+// Built-in Node modules only: the script runs before `npm ci`.
 import { spawnSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,38 +14,38 @@ let force = process.argv.includes('--force');
 
 const ok = (m) => console.log(`  OK    ${m}`);
 function fail(step, msg, fix) {
-  console.log(`\n  FAIL  ${step}: ${msg}\n\n  Что сделать:\n${fix.map((s) => '    - ' + s).join('\n')}\n`);
+  console.log(`\n  FAIL  ${step}: ${msg}\n\n  What to do:\n${fix.map((s) => '    - ' + s).join('\n')}\n`);
   process.exit(1);
 }
 const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', ...opts });
 
-console.log('\nTON Vanity — установка\n');
+console.log('\nTON Vanity — setup\n');
 
 // 1. Node
 const major = Number(process.versions.node.split('.')[0]);
-if (major < 20) fail('Node.js', `версия ${process.versions.node}, нужна 20+`, ['Установите Node.js LTS с https://nodejs.org и откройте новый терминал.']);
+if (major < 20) fail('Node.js', `version ${process.versions.node}, 20+ required`, ['Install Node.js LTS from https://nodejs.org and open a new terminal.']);
 ok(`Node.js ${process.versions.node}`);
 
-// 2. Зависимости
+// 2. Dependencies
 if (!fs.existsSync(path.join(ROOT, 'node_modules', '@ton', 'ton'))) {
-  console.log('  ...   ставлю зависимости (npm ci)');
+  console.log('  ...   installing dependencies (npm ci)');
   const r = WIN ? run('npm ci --no-audit --no-fund', [], { cwd: ROOT, stdio: 'inherit', shell: true })
     : run('npm', ['ci', '--no-audit', '--no-fund'], { cwd: ROOT, stdio: 'inherit' });
-  if (r.status !== 0) fail('npm ci', 'не удалось поставить зависимости', ['Проверьте интернет и запустите `npm ci` вручную, посмотрите текст ошибки.']);
+  if (r.status !== 0) fail('npm ci', 'failed to install dependencies', ['Check your internet connection, run `npm ci` manually and read the error.']);
 }
-ok('зависимости Node');
+ok('Node dependencies');
 
-// 3. Видеокарта и драйвер
+// 3. GPU and driver
 const smi = run('nvidia-smi', ['--query-gpu=name,driver_version,compute_cap', '--format=csv,noheader']);
 if (smi.status !== 0 || !smi.stdout.trim()) {
-  fail('видеокарта', 'nvidia-smi не найден или не отвечает', [
-    'Нужна видеокарта NVIDIA и свежий драйвер: https://www.nvidia.com/drivers',
-    'После установки драйвера перезагрузите компьютер и запустите `npm run setup` снова.',
+  fail('GPU', 'nvidia-smi not found or not responding', [
+    'You need an NVIDIA GPU and a recent driver: https://www.nvidia.com/drivers',
+    'After installing the driver, reboot and run `npm run setup` again.',
   ]);
 }
 const [gpuName, driver, cc] = smi.stdout.trim().split('\n')[0].split(',').map((s) => s.trim());
 const arch = /^\d+\.\d+$/.test(cc || '') ? 'sm_' + cc.replace('.', '') : 'native';
-ok(`видеокарта: ${gpuName}, драйвер ${driver}, архитектура ${arch}`);
+ok(`GPU: ${gpuName}, driver ${driver}, architecture ${arch}`);
 
 // 4. CUDA Toolkit (nvcc)
 let nvcc = 'nvcc';
@@ -54,15 +54,15 @@ if (run(nvcc, ['--version']).status !== 0) {
   const linuxGuess = '/usr/local/cuda/bin/nvcc';
   if (guess && fs.existsSync(guess)) nvcc = guess;
   else if (!WIN && fs.existsSync(linuxGuess)) nvcc = linuxGuess;
-  else fail('CUDA Toolkit', 'компилятор nvcc не найден', [
-    'Установите CUDA Toolkit: https://developer.nvidia.com/cuda-downloads (настройки по умолчанию).',
-    'Откройте НОВЫЙ терминал (чтобы обновился PATH) и запустите `npm run setup` снова.',
+  else fail('CUDA Toolkit', 'nvcc compiler not found', [
+    'Install the CUDA Toolkit: https://developer.nvidia.com/cuda-downloads (default options).',
+    'Open a NEW terminal (so PATH is updated) and run `npm run setup` again.',
   ]);
 }
 const nvccVer = (run(nvcc, ['--version']).stdout.match(/release ([\d.]+)/) || [])[1] || '?';
 ok(`CUDA Toolkit ${nvccVer}`);
 
-// 5. Компилятор C++ (Windows: MSVC через vcvars64.bat)
+// 5. C++ compiler (Windows: MSVC via vcvars64.bat)
 let vcvars = null;
 if (WIN) {
   const pf86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
@@ -78,28 +78,28 @@ if (WIN) {
       if (!vcvars && fs.existsSync(p)) vcvars = p;
     }
   }
-  if (!vcvars) fail('компилятор C++', 'Visual Studio Build Tools (MSVC) не найден', [
-    'Установите «Build Tools for Visual Studio 2022»: https://visualstudio.microsoft.com/visual-cpp-build-tools/',
-    'В установщике отметьте «Разработка классических приложений на C++» (Desktop development with C++).',
-    'Или одной командой: winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"',
-    'Потом запустите `npm run setup` снова.',
+  if (!vcvars) fail('C++ compiler', 'Visual Studio Build Tools (MSVC) not found', [
+    'Install "Build Tools for Visual Studio 2022": https://visualstudio.microsoft.com/visual-cpp-build-tools/',
+    'In the installer, select "Desktop development with C++".',
+    'Or with one command: winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"',
+    'Then run `npm run setup` again.',
   ]);
   ok('MSVC: ' + vcvars);
 }
 
-// 5б. Словарь сита v5-lite — из той же оценки, что в src/score_v5.mjs (правки вкуса сразу доходят до видеокарты)
+// 5b. The v5-lite sieve dictionary, built from the same score as src/score_v5.mjs (taste edits reach the GPU right away)
 {
   const g = run(process.execPath, [path.join(ROOT, 'src', 'gpu_dict_v5.mjs')], { cwd: ROOT });
-  if (g.status !== 0) fail('словарь сита', ((g.stdout || '') + (g.stderr || '')).trim().slice(0, 1500), ['Проверьте src/score_v5.mjs и data/: они должны загружаться без ошибок (npm test).']);
+  if (g.status !== 0) fail('sieve dictionary', ((g.stdout || '') + (g.stderr || '')).trim().slice(0, 1500), ['Check src/score_v5.mjs and data/: they must load without errors (npm test).']);
   const hdr = path.join(ROOT, 'cuda', 'v5dict.h');
-  if (fs.existsSync(EXE) && fs.statSync(hdr).mtimeMs > fs.statSync(EXE).mtimeMs && !force) { force = true; ok('словарь сита изменился — пересоберу ядро'); }
+  if (fs.existsSync(EXE) && fs.statSync(hdr).mtimeMs > fs.statSync(EXE).mtimeMs && !force) { force = true; ok('sieve dictionary changed: rebuilding the kernel'); }
   else ok((g.stdout || '').trim());
 }
 
-// 6. Сборка ядра
-if (fs.existsSync(EXE) && !force) ok('ядро уже собрано (пересобрать: npm run setup -- --force)');
+// 6. Kernel build
+if (fs.existsSync(EXE) && !force) ok('kernel already built (to rebuild: npm run setup -- --force)');
 else {
-  console.log(`  ...   собираю ядро под ${arch} (1–3 минуты)`);
+  console.log(`  ...   building the kernel for ${arch} (1–3 minutes)`);
   const t0 = Date.now();
   const nvArgs = `-O3 -arch=${arch} -o ${WIN ? 'vanity.exe' : 'vanity'} vanity.cu ${WIN ? '-lnvml' : '-lnvidia-ml'}`;
   let r;
@@ -111,53 +111,54 @@ else {
   }
   const fresh = fs.existsSync(EXE) && fs.statSync(EXE).mtimeMs >= t0 - 2000;
   if (r.status !== 0 || !fresh) {
+    // "ошибк" catches MSVC errors on a Russian-language Windows ("ошибка C2065")
     const log = ((r.stdout || '') + (r.stderr || '')).split('\n').filter((l) => /error|ошибк|fatal/i.test(l)).slice(0, 15).join('\n');
-    fail('сборка ядра', 'nvcc завершился с ошибкой', [
-      'Текст ошибки:\n' + (log || (r.stdout || '') + (r.stderr || '')).slice(0, 2000),
-      '«unsupported Microsoft Visual Studio version» — поставьте версию Visual Studio, которую поддерживает ваш CUDA Toolkit (обычно 2022).',
-      '«unsupported gpu architecture» — CUDA Toolkit слишком новый/старый для вашей карты: поставьте подходящую версию CUDA.',
+    fail('kernel build', 'nvcc failed', [
+      'Error output:\n' + (log || (r.stdout || '') + (r.stderr || '')).slice(0, 2000),
+      '"unsupported Microsoft Visual Studio version": install a Visual Studio version your CUDA Toolkit supports (usually 2022).',
+      '"unsupported gpu architecture": the CUDA Toolkit is too new/old for your card; install a matching CUDA version.',
     ]);
   }
-  ok(`ядро собрано за ${Math.round((Date.now() - t0) / 1000)} с`);
+  ok(`kernel built in ${Math.round((Date.now() - t0) / 1000)} s`);
 }
 
-// 6б. Таблица окна 16 бит (60 МБ, генерируется за несколько секунд; без неё ядро вдвое медленнее)
+// 6b. The 16-bit window table (60 MB, generated in a few seconds; without it the kernel is half as fast)
 const TBL = path.join(ROOT, 'cuda', 'tbl16.bin');
-if (fs.existsSync(TBL) && fs.statSync(TBL).size === 62914560 && !force) ok('таблица cuda/tbl16.bin на месте');
+if (fs.existsSync(TBL) && fs.statSync(TBL).size === 62914560 && !force) ok('table cuda/tbl16.bin is in place');
 else {
   const g = run(process.execPath, [path.join(ROOT, 'cuda', 'gen_wtable.mjs')], { cwd: ROOT });
-  if (g.status !== 0) fail('таблица ускорения', ((g.stdout || '') + (g.stderr || '')).trim().slice(0, 1500), [
-    'Без таблицы ядро тоже работает, но вдвое медленнее. Попробуйте ещё раз: npm run setup -- --force',
+  if (g.status !== 0) fail('speed-up table', ((g.stdout || '') + (g.stderr || '')).trim().slice(0, 1500), [
+    'The kernel also works without the table, but half as fast. Try again: npm run setup -- --force',
   ]);
   ok((g.stdout || '').trim());
 }
 
-// 7. Самопроверка: ядро против официальной @ton/ton
+// 7. Self-test: the kernel against the official @ton/ton
 const st = run(process.execPath, [path.join(ROOT, 'ref', 'selftest.mjs')], { cwd: ROOT });
-if (st.status !== 0) fail('самопроверка', (st.stdout + st.stderr).trim().slice(0, 1500), [
-  'Ядро считает адреса неправильно — НЕ используйте его. Пересоберите: npm run setup -- --force',
-  'Если не помогло — создайте issue с текстом выше и моделью видеокарты.',
+if (st.status !== 0) fail('self-test', (st.stdout + st.stderr).trim().slice(0, 1500), [
+  'The kernel computes wrong addresses: do NOT use it. Rebuild: npm run setup -- --force',
+  'If that doesn\'t help, open an issue with the text above and your GPU model.',
 ]);
 ok(st.stdout.trim());
 
-// 7б. Сито v5-lite == оценка src/score_v5.mjs
+// 7b. The v5-lite sieve == the src/score_v5.mjs score
 const v5c = run(process.execPath, [path.join(ROOT, 'ref', 'check_v5lite.mjs')], { cwd: ROOT });
-if (v5c.status !== 0) fail('сверка сита v5-lite', ((v5c.stdout || '') + (v5c.stderr || '')).trim().slice(0, 1500), [
-  'Пересоберите: npm run setup -- --force. Если не помогло — создайте issue с этим текстом.',
+if (v5c.status !== 0) fail('v5-lite sieve check', ((v5c.stdout || '') + (v5c.stderr || '')).trim().slice(0, 1500), [
+  'Rebuild: npm run setup -- --force. If that doesn\'t help, open an issue with this text.',
 ]);
 ok((v5c.stdout || '').trim());
 
-// 8. Быстрый детектор == эталонный (несколько секунд)
+// 8. The fast detector == the reference one (a few seconds)
 const v = run(EXE, ['validate', '3'], { cwd: path.join(ROOT, 'cuda') });
-if (!/VALIDATE OK/.test(v.stdout || '')) fail('сверка детектора', ((v.stdout || '') + (v.stderr || '')).trim().slice(0, 1500), [
-  'Пересоберите: npm run setup -- --force. Если не помогло — создайте issue с этим текстом.',
+if (!/VALIDATE OK/.test(v.stdout || '')) fail('detector check', ((v.stdout || '') + (v.stderr || '')).trim().slice(0, 1500), [
+  'Rebuild: npm run setup -- --force. If that doesn\'t help, open an issue with this text.',
 ]);
-ok('сверка детектора: 0 расхождений');
+ok('detector check: 0 mismatches');
 
 console.log(`
-  Готово. Дальше:
-    npm run bench        — скорость вашей карты
-    npm run hunt         — охота (Ctrl+C — стоп); находки с КЛЮЧАМИ пишутся в gems.jsonl
-    npm run top          — лучшие найденные адреса (без ключей)
-    Telegram (по желанию) — см. README, раздел «Telegram»
+  Done. Next:
+    npm run bench        — your GPU speed
+    npm run hunt         — hunt (Ctrl+C to stop); finds WITH KEYS are written to gems.jsonl
+    npm run top          — best addresses found (no keys)
+    Telegram (optional): see README, section "Telegram"
 `);

@@ -1,8 +1,8 @@
-// Самопроверка GPU-ядра: 20 детерминированных тестовых сидов -> ядро считает pubkey и хеш адреса,
-// то же самое считает официальная @ton/ton, сравниваем побайтно. Проверяются все 4 версии кошелька
-// (W5, V4R2, V3R2, V3R1) и оба пути умножения на кривой: с таблицей окна 16 бит и без неё (--no-table).
-// Сиды = SHA-256("ton-vanity selftest #i") — публичные, НЕ использовать под деньги.
-//   node ref/selftest.mjs            (нужен собранный cuda/vanity.exe)
+// GPU kernel self-test: 20 deterministic test seeds -> the kernel computes the pubkey and the address hash,
+// the official @ton/ton computes the same, and we compare them byte by byte. It covers all 4 wallet versions
+// (W5, V4R2, V3R2, V3R1) and both curve multiplication paths: with the 16-bit window table and without it (--no-table).
+// Seeds = SHA-256("ton-vanity selftest #i") — public, do NOT use them for real money.
+//   node ref/selftest.mjs            (needs a built cuda/vanity.exe)
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,8 +30,8 @@ for (const { n, v, args } of runs) {
     const pub = Buffer.from(kp.publicKey).toString('hex'), hash = w.address.hash.toString('hex');
     const [gs, gp, gh] = out[i] || [];
     if (gs === s && gp === pub && gh === hash) ok++;
-    else console.log(`${n}${args.length ? ' ' + args.join(' ') : ''} #${i} НЕ СОШЛОСЬ\n  ждали ${pub} ${hash}\n  ядро  ${gp} ${gh}`);
+    else console.log(`${n}${args.length ? ' ' + args.join(' ') : ''} #${i} MISMATCH\n  expected ${pub} ${hash}\n  kernel   ${gp} ${gh}`);
   });
 }
-console.log(`selftest: ${ok}/${total} совпало с @ton/ton (${names.join(', ')}; с таблицей и без)`);
+console.log(`selftest: ${ok}/${total} match @ton/ton (${names.join(', ')}; with and without the table)`);
 process.exit(ok === total ? 0 : 1);

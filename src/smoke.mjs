@@ -1,4 +1,4 @@
-// Сквозная проверка: быстрый путь == официальная либа, на случайных сидах.
+// End-to-end check: the fast path == the official library, on random seeds.
 import crypto from 'node:crypto';
 import { addrHashFromPub, friendly } from './w5.mjs';
 import { verifySeed } from './verify.mjs';
@@ -21,5 +21,5 @@ for (let i = 0; i < N; i++) {
   if (fastUq === ref.uq && fastEq === ref.eq) ok++;
   else { bad++; if (bad <= 3) console.error('MISMATCH', { fastUq, refUq: ref.uq }); }
 }
-console.log(`sквозной тест: ${ok}/${N} совпали с @ton/ton, расхождений: ${bad}`);
+console.log(`end-to-end test: ${ok}/${N} match @ton/ton, mismatches: ${bad}`);
 process.exit(bad ? 1 : 0);
